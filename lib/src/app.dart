@@ -588,6 +588,8 @@ class EmployeeDataTable extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
+        columnSpacing: 24,
+        horizontalMargin: 16,
         columns: const [
           DataColumn(label: Text('Nama')),
           DataColumn(label: Text('NIP')),
@@ -634,18 +636,31 @@ class EmployeeDataTable extends StatelessWidget {
               ),
               DataCell(StatusChip(isActive: employee.isActive)),
               DataCell(
-                Wrap(
-                  spacing: 8,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      tooltip: 'Edit',
-                      onPressed: () => onEdit(employee: employee),
-                      icon: const Icon(Icons.edit_outlined),
+                    SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Edit',
+                        onPressed: () => onEdit(employee: employee),
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                      ),
                     ),
-                    IconButton(
-                      tooltip: 'Hapus',
-                      onPressed: () => onDelete(employee),
-                      icon: const Icon(Icons.delete_outline),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Hapus',
+                        onPressed: () => onDelete(employee),
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                      ),
                     ),
                   ],
                 ),
