@@ -57,21 +57,21 @@ class SupabaseSetupPage extends StatelessWidget {
                     ),
                     SizedBox(height: 12),
                     Text(
-                      'Jalankan aplikasi dengan dart define berikut supaya portal kepegawaian tersambung ke database cloud.',
+                      'Isi file .env supaya portal kepegawaian tersambung ke database cloud.',
                     ),
                     SizedBox(height: 20),
                     _CommandBlock(
                       command:
-                          'flutter run -d chrome --dart-define=SUPABASE_URL=https://YOUR-PROJECT.supabase.co --dart-define=SUPABASE_ANON_KEY=YOUR_ANON_KEY',
+                          'SUPABASE_URL=https://YOUR-PROJECT.supabase.co',
                     ),
                     SizedBox(height: 12),
                     _CommandBlock(
                       command:
-                          'flutter run -d windows --dart-define=SUPABASE_URL=https://YOUR-PROJECT.supabase.co --dart-define=SUPABASE_ANON_KEY=YOUR_ANON_KEY',
+                          'SUPABASE_ANON_KEY=YOUR_ANON_KEY',
                     ),
                     SizedBox(height: 20),
                     Text(
-                      'Setelah URL dan anon key tersedia, aplikasi akan login anonim ke Supabase lalu semua operasi CRUD memakai tabel employees.',
+                      'Setelah file .env terisi, aplikasi akan login anonim ke Supabase lalu semua operasi CRUD memakai tabel employees.',
                     ),
                   ],
                 ),
