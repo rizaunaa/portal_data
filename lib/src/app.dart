@@ -381,6 +381,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
   }
 
+  Future<void> _showEmployeeDetails(Employee employee) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => EmployeeDetailDialog(employee: employee),
+    );
+  }
+
   void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
@@ -634,6 +641,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                     if (isWide)
                                                       EmployeeDataTable(
                                                         employees: employees,
+                                                        onViewDetails:
+                                                            _showEmployeeDetails,
                                                         onEdit:
                                                             _openEmployeeForm,
                                                         onDelete:
@@ -861,6 +870,7 @@ class EmployeeDataTable extends StatelessWidget {
   const EmployeeDataTable({
     super.key,
     required this.employees,
+    required this.onViewDetails,
     required this.onEdit,
     required this.onDelete,
   });
@@ -875,6 +885,7 @@ class EmployeeDataTable extends StatelessWidget {
   static const double _actionColumnWidth = 96;
 
   final List<Employee> employees;
+  final Future<void> Function(Employee employee) onViewDetails;
   final Future<void> Function({Employee? employee}) onEdit;
   final Future<void> Function(Employee employee) onDelete;
 
@@ -941,6 +952,7 @@ class EmployeeDataTable extends StatelessWidget {
         ],
         rows: employees.map((employee) {
           return DataRow(
+            onSelectChanged: (_) => onViewDetails(employee),
             cells: [
               DataCell(_buildPhotoCell(employee)),
               DataCell(
@@ -1157,6 +1169,73 @@ class _InfoRow extends StatelessWidget {
           Expanded(child: Text(value.isEmpty ? '-' : value)),
         ],
       ),
+    );
+  }
+}
+
+class EmployeeDetailDialog extends StatelessWidget {
+  const EmployeeDetailDialog({super.key, required this.employee});
+
+  final Employee employee;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: const Text('Detail Pegawai'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  EmployeeAvatar(
+                    name: employee.name,
+                    photoUrl: employee.photoUrl,
+                    radius: 28,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          employee.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${employee.position} • ${employee.department}',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusChip(isActive: employee.isActive),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _InfoRow(label: 'NIP', value: employee.nip),
+              _InfoRow(label: 'Email', value: employee.email),
+              _InfoRow(label: 'Telepon', value: employee.phone),
+              _InfoRow(label: 'Alamat', value: employee.address),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
     );
   }
 }
