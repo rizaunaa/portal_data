@@ -994,7 +994,7 @@ class EmployeeDataTable extends StatelessWidget {
                   children: [
                     _dataCell(
                       flex: _photoFlex,
-                      child: EmployeeAvatar(
+                      child: EmployeeAvatarButton(
                         name: employee.name,
                         photoUrl: employee.photoUrl,
                         radius: 20,
@@ -1126,7 +1126,7 @@ class EmployeeListCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  EmployeeAvatar(
+                  EmployeeAvatarButton(
                     name: employee.name,
                     photoUrl: employee.photoUrl,
                   ),
@@ -1236,7 +1236,7 @@ class EmployeeDetailDialog extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  EmployeeAvatar(
+                  EmployeeAvatarButton(
                     name: employee.name,
                     photoUrl: employee.photoUrl,
                     radius: 28,
@@ -1279,6 +1279,133 @@ class EmployeeDetailDialog extends StatelessWidget {
           child: const Text('Tutup'),
         ),
       ],
+    );
+  }
+}
+
+class EmployeePhotoViewerDialog extends StatelessWidget {
+  const EmployeePhotoViewerDialog({
+    super.key,
+    required this.name,
+    required this.photoUrl,
+  });
+
+  final String name;
+  final String photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: Image.network(
+                photoUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Foto profil gagal dimuat.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EmployeeAvatarButton extends StatelessWidget {
+  const EmployeeAvatarButton({
+    super.key,
+    required this.name,
+    required this.photoUrl,
+    this.photoBytes,
+    this.radius = 22,
+  });
+
+  final String name;
+  final String photoUrl;
+  final Uint8List? photoBytes;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = photoBytes != null || photoUrl.trim().isNotEmpty;
+
+    if (!hasPhoto) {
+      return EmployeeAvatar(
+        name: name,
+        photoUrl: photoUrl,
+        photoBytes: photoBytes,
+        radius: radius,
+      );
+    }
+
+    return Tooltip(
+      message: 'Lihat foto penuh',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(radius + 6),
+        onTap: () {
+          final trimmedPhotoUrl = photoUrl.trim();
+          if (trimmedPhotoUrl.isEmpty) {
+            return;
+          }
+
+          showDialog<void>(
+            context: context,
+            builder: (context) => EmployeePhotoViewerDialog(
+              name: name,
+              photoUrl: trimmedPhotoUrl,
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: EmployeeAvatar(
+            name: name,
+            photoUrl: photoUrl,
+            photoBytes: photoBytes,
+            radius: radius,
+          ),
+        ),
+      ),
     );
   }
 }
