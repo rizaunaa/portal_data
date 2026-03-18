@@ -542,55 +542,71 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                 prefixIcon: const Icon(
                                                   Icons.search,
                                                 ),
-                                                suffixIcon:
-                                                    _searchQuery.isNotEmpty
-                                                    ? IconButton(
-                                                        onPressed:
-                                                            _searchController
-                                                                .clear,
-                                                        icon: const Icon(
-                                                          Icons.close,
-                                                        ),
-                                                      )
-                                                    : null,
+                                                suffixIconConstraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 48,
+                                                      minHeight: 48,
+                                                    ),
+                                                suffixIcon: Visibility(
+                                                  visible:
+                                                      _searchQuery.isNotEmpty,
+                                                  maintainAnimation: true,
+                                                  maintainSize: true,
+                                                  maintainState: true,
+                                                  child: IconButton(
+                                                    onPressed:
+                                                        _searchController.clear,
+                                                    icon: const Icon(
+                                                      Icons.close,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ],
                                       ),
                                       const SizedBox(height: 20),
-                                      if (employees.isEmpty)
-                                        const EmptyEmployeeState()
-                                      else if (isWide)
-                                        EmployeeDataTable(
-                                          employees: employees,
-                                          onEdit: _openEmployeeForm,
-                                          onDelete: _deleteEmployee,
-                                        )
-                                      else
-                                        Column(
-                                          children: employees
-                                              .map(
-                                                (employee) => Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 12,
-                                                      ),
-                                                  child: EmployeeListCard(
-                                                    employee: employee,
-                                                    onEdit: () =>
-                                                        _openEmployeeForm(
-                                                          employee: employee,
-                                                        ),
-                                                    onDelete: () =>
-                                                        _deleteEmployee(
-                                                          employee,
-                                                        ),
-                                                  ),
-                                                ),
-                                              )
-                                              .toList(),
+                                      ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minHeight: isWide ? 280 : 220,
                                         ),
+                                        child: Align(
+                                          alignment: Alignment.topLeft,
+                                          child: employees.isEmpty
+                                              ? const EmptyEmployeeState()
+                                              : isWide
+                                              ? EmployeeDataTable(
+                                                  employees: employees,
+                                                  onEdit: _openEmployeeForm,
+                                                  onDelete: _deleteEmployee,
+                                                )
+                                              : Column(
+                                                  children: employees
+                                                      .map(
+                                                        (employee) => Padding(
+                                                          padding:
+                                                              const EdgeInsets.only(
+                                                                bottom: 12,
+                                                              ),
+                                                          child: EmployeeListCard(
+                                                            employee: employee,
+                                                            onEdit: () =>
+                                                                _openEmployeeForm(
+                                                                  employee:
+                                                                      employee,
+                                                                ),
+                                                            onDelete: () =>
+                                                                _deleteEmployee(
+                                                                  employee,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                      .toList(),
+                                                ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -694,9 +710,43 @@ class EmployeeDataTable extends StatelessWidget {
     required this.onDelete,
   });
 
+  static const double _nameColumnWidth = 180;
+  static const double _nipColumnWidth = 120;
+  static const double _positionColumnWidth = 150;
+  static const double _departmentColumnWidth = 130;
+  static const double _contactColumnWidth = 180;
+  static const double _statusColumnWidth = 84;
+  static const double _actionColumnWidth = 96;
+
   final List<Employee> employees;
   final Future<void> Function({Employee? employee}) onEdit;
   final Future<void> Function(Employee employee) onDelete;
+
+  DataColumn _buildColumn(String label, double width) {
+    return DataColumn(
+      label: SizedBox(
+        width: width,
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _singleLineText(String value, {FontWeight? fontWeight, Color? color}) {
+    return Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: fontWeight,
+        color: color,
+        height: 1.2,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -704,81 +754,116 @@ class EmployeeDataTable extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
-        columnSpacing: 24,
-        horizontalMargin: 16,
-        columns: const [
-          DataColumn(label: Text('Nama')),
-          DataColumn(label: Text('NIP')),
-          DataColumn(label: Text('Jabatan')),
-          DataColumn(label: Text('Unit')),
-          DataColumn(label: Text('Kontak')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Aksi')),
+        columnSpacing: 16,
+        horizontalMargin: 12,
+        headingRowHeight: 44,
+        dataRowMinHeight: 52,
+        dataRowMaxHeight: 60,
+        columns: [
+          _buildColumn('Nama', _nameColumnWidth),
+          _buildColumn('NIP', _nipColumnWidth),
+          _buildColumn('Jabatan', _positionColumnWidth),
+          _buildColumn('Unit', _departmentColumnWidth),
+          _buildColumn('Kontak', _contactColumnWidth),
+          _buildColumn('Status', _statusColumnWidth),
+          _buildColumn('Aksi', _actionColumnWidth),
         ],
         rows: employees.map((employee) {
           return DataRow(
             cells: [
               DataCell(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      employee.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      employee.address,
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+                SizedBox(
+                  width: _nameColumnWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _singleLineText(
+                        employee.name,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      _singleLineText(
+                        employee.address,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              DataCell(Text(employee.nip)),
-              DataCell(Text(employee.position)),
-              DataCell(Text(employee.department)),
               DataCell(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(employee.email),
-                    Text(
-                      employee.phone,
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+                SizedBox(
+                  width: _nipColumnWidth,
+                  child: _singleLineText(employee.nip),
                 ),
               ),
-              DataCell(StatusChip(isActive: employee.isActive)),
               DataCell(
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        tooltip: 'Edit',
-                        onPressed: () => onEdit(employee: employee),
-                        icon: const Icon(Icons.edit_outlined, size: 20),
+                SizedBox(
+                  width: _positionColumnWidth,
+                  child: _singleLineText(employee.position),
+                ),
+              ),
+              DataCell(
+                SizedBox(
+                  width: _departmentColumnWidth,
+                  child: _singleLineText(employee.department),
+                ),
+              ),
+              DataCell(
+                SizedBox(
+                  width: _contactColumnWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _singleLineText(employee.email),
+                      _singleLineText(
+                        employee.phone,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        tooltip: 'Hapus',
-                        onPressed: () => onDelete(employee),
-                        icon: const Icon(Icons.delete_outline, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+              DataCell(
+                SizedBox(
+                  width: _statusColumnWidth,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: StatusChip(isActive: employee.isActive),
+                  ),
+                ),
+              ),
+              DataCell(
+                SizedBox(
+                  width: _actionColumnWidth,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 34,
+                        height: 34,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Edit',
+                          onPressed: () => onEdit(employee: employee),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      SizedBox(
+                        width: 34,
+                        height: 34,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Hapus',
+                          onPressed: () => onDelete(employee),
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
