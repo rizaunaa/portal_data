@@ -1,3 +1,4 @@
+import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -6,24 +7,108 @@ import 'services/employee_repository.dart';
 import 'supabase_bootstrap.dart';
 
 class EmployeeApp extends StatelessWidget {
-  const EmployeeApp({super.key});
+  const EmployeeApp({
+    super.key,
+    required this.savedThemeMode,
+  });
+
+  final AdaptiveThemeMode? savedThemeMode;
+
+  ThemeData _buildLightTheme() {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0F766E),
+      brightness: Brightness.light,
+    );
+
+    return ThemeData(
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFFF6FBFA),
+      useMaterial3: true,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+      ),
+      cardTheme: CardThemeData(
+        color: colorScheme.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colorScheme.surface,
+        hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+
+  ThemeData _buildDarkTheme() {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF14B8A6),
+      brightness: Brightness.dark,
+    );
+
+    return ThemeData(
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFF0B1220),
+      useMaterial3: true,
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFF101A14),
+        foregroundColor: colorScheme.onSurface,
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF111827),
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF111827),
+        hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Portal Kepegawaian',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F766E),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF6FBFA),
-        useMaterial3: true,
-      ),
-      home: isSupabaseConfigured
-          ? const EmployeeHomePage()
-          : const SupabaseSetupPage(),
+    return AdaptiveTheme(
+      light: _buildLightTheme(),
+      dark: _buildDarkTheme(),
+      initial: savedThemeMode ?? AdaptiveThemeMode.light,
+      builder: (theme, darkTheme) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Portal Kepegawaian',
+          theme: theme,
+          darkTheme: darkTheme,
+          home: isSupabaseConfigured
+              ? const EmployeeHomePage()
+              : const SupabaseSetupPage(),
+        );
+      },
     );
   }
 }
@@ -34,6 +119,12 @@ class SupabaseSetupPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Portal Kepegawaian'),
+        actions: const [
+          ThemeModeButton(),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -91,11 +182,13 @@ class _CommandBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: isDark ? const Color(0xFF020617) : const Color(0xFF0F172A),
         borderRadius: BorderRadius.circular(16),
       ),
       child: SelectableText(
@@ -321,6 +414,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final employees = _filteredEmployees;
     final totalEmployees = _employees.length;
     final activeEmployees = _employees.where((item) => item.isActive).length;
@@ -330,6 +426,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       appBar: AppBar(
         title: const Text('Portal Kepegawaian'),
         actions: [
+          const ThemeModeButton(),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _isLoading ? null : _loadEmployees,
@@ -387,13 +484,22 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                   const SizedBox(height: 20),
                                   Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: isDark
+                                          ? const Color(0xFF111827)
+                                          : Colors.white,
                                       borderRadius: BorderRadius.circular(24),
-                                      boxShadow: const [
+                                      border: Border.all(
+                                        color: isDark
+                                            ? colorScheme.outline
+                                            : const Color(0xFFE5E7EB),
+                                      ),
+                                      boxShadow: [
                                         BoxShadow(
-                                          color: Color(0x12000000),
-                                          blurRadius: 24,
-                                          offset: Offset(0, 10),
+                                          color: isDark
+                                              ? const Color(0x33000000)
+                                              : const Color(0x12000000),
+                                          blurRadius: isDark ? 18 : 24,
+                                          offset: const Offset(0, 10),
                                         ),
                                       ],
                                     ),
@@ -411,7 +517,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                             runSpacing: 12,
                                             spacing: 12,
                                             children: [
-                                              const Column(
+                                              Column(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
                                                 children: [
@@ -421,13 +527,16 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                       fontSize: 22,
                                                       fontWeight:
                                                           FontWeight.w700,
+                                                      color:
+                                                          colorScheme.onSurface,
                                                     ),
                                                   ),
-                                                  SizedBox(height: 4),
+                                                  const SizedBox(height: 4),
                                                   Text(
                                                     'Semua perubahan sekarang tersimpan di Supabase.',
                                                     style: TextStyle(
-                                                      color: Colors.black54,
+                                                      color:
+                                                          colorScheme.onSurfaceVariant,
                                                     ),
                                                   ),
                                                 ],
@@ -454,12 +563,6 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                             ),
                                                           )
                                                         : null,
-                                                    border: OutlineInputBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            16,
-                                                          ),
-                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -523,6 +626,30 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   }
 }
 
+class ThemeModeButton extends StatelessWidget {
+  const ThemeModeButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return IconButton(
+      tooltip: isDark ? 'Pindah ke Light Mode' : 'Pindah ke Dark Mode',
+      onPressed: () {
+        final adaptiveTheme = AdaptiveTheme.of(context);
+        if (isDark) {
+          adaptiveTheme.setLight();
+        } else {
+          adaptiveTheme.setDark();
+        }
+      },
+      icon: Icon(
+        isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+      ),
+    );
+  }
+}
+
 class ErrorState extends StatelessWidget {
   const ErrorState({super.key, required this.message, required this.onRetry});
 
@@ -531,6 +658,7 @@ class ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
@@ -553,7 +681,7 @@ class ErrorState extends StatelessWidget {
                   Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.black54),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
@@ -585,6 +713,7 @@ class EmployeeDataTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
@@ -613,7 +742,7 @@ class EmployeeDataTable extends StatelessWidget {
                     ),
                     Text(
                       employee.address,
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -629,7 +758,7 @@ class EmployeeDataTable extends StatelessWidget {
                     Text(employee.email),
                     Text(
                       employee.phone,
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -687,11 +816,15 @@ class EmployeeListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FCFB),
+        color: isDark ? const Color(0xFF162033) : const Color(0xFFF9FCFB),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -718,7 +851,7 @@ class EmployeeListCard extends StatelessWidget {
                     ),
                     Text(
                       '${employee.position} • ${employee.department}',
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -765,6 +898,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -774,8 +908,8 @@ class _InfoRow extends StatelessWidget {
             width: 70,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.black54,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -794,14 +928,19 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Chip(
       label: Text(isActive ? 'Aktif' : 'Nonaktif'),
       labelStyle: TextStyle(
-        color: isActive ? const Color(0xFF166534) : const Color(0xFF92400E),
+        color: isActive
+            ? (isDark ? const Color(0xFFBBF7D0) : const Color(0xFF166534))
+            : (isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E)),
         fontWeight: FontWeight.w700,
       ),
       backgroundColor:
-          isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+          isActive
+              ? (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7))
+              : (isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7)),
       side: BorderSide.none,
       visualDensity: VisualDensity.compact,
     );
@@ -868,27 +1007,35 @@ class EmptyEmployeeState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: isDark ? const Color(0xFF162033) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        ),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.groups_outlined, size: 48, color: Colors.black45),
-          SizedBox(height: 12),
-          Text(
+          Icon(
+            Icons.groups_outlined,
+            size: 48,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          const Text(
             'Belum ada data pegawai di database',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
             'Tambahkan pegawai pertama untuk mulai membangun portal kepegawaian.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
