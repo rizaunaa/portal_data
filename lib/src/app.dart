@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:adaptive_theme/adaptive_theme.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -863,6 +866,7 @@ class EmployeeDataTable extends StatelessWidget {
   });
 
   static const double _nameColumnWidth = 180;
+  static const double _photoColumnWidth = 84;
   static const double _nipColumnWidth = 120;
   static const double _positionColumnWidth = 150;
   static const double _departmentColumnWidth = 130;
@@ -900,6 +904,20 @@ class EmployeeDataTable extends StatelessWidget {
     );
   }
 
+  Widget _buildPhotoCell(Employee employee) {
+    return SizedBox(
+      width: _photoColumnWidth,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: EmployeeAvatar(
+          name: employee.name,
+          photoUrl: employee.photoUrl,
+          radius: 20,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -912,6 +930,7 @@ class EmployeeDataTable extends StatelessWidget {
         dataRowMinHeight: 52,
         dataRowMaxHeight: 60,
         columns: [
+          _buildColumn('Foto', _photoColumnWidth),
           _buildColumn('Nama', _nameColumnWidth),
           _buildColumn('NIP', _nipColumnWidth),
           _buildColumn('Jabatan', _positionColumnWidth),
@@ -923,6 +942,7 @@ class EmployeeDataTable extends StatelessWidget {
         rows: employees.map((employee) {
           return DataRow(
             cells: [
+              DataCell(_buildPhotoCell(employee)),
               DataCell(
                 SizedBox(
                   width: _nameColumnWidth,
@@ -1056,11 +1076,7 @@ class EmployeeListCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                backgroundColor: const Color(0xFFCCFBF1),
-                foregroundColor: const Color(0xFF115E59),
-                child: Text(employee.name.characters.first.toUpperCase()),
-              ),
+              EmployeeAvatar(name: employee.name, photoUrl: employee.photoUrl),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1141,6 +1157,41 @@ class _InfoRow extends StatelessWidget {
           Expanded(child: Text(value.isEmpty ? '-' : value)),
         ],
       ),
+    );
+  }
+}
+
+class EmployeeAvatar extends StatelessWidget {
+  const EmployeeAvatar({
+    super.key,
+    required this.name,
+    required this.photoUrl,
+    this.photoBytes,
+    this.radius = 22,
+  });
+
+  final String name;
+  final String photoUrl;
+  final Uint8List? photoBytes;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedPhotoUrl = photoUrl.trim();
+    final hasPhoto = trimmedPhotoUrl.isNotEmpty;
+    final initial = name.trim().isEmpty ? '?' : name.trim().characters.first;
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFCCFBF1),
+      foregroundColor: const Color(0xFF115E59),
+      foregroundImage: photoBytes != null
+          ? MemoryImage(photoBytes!)
+          : hasPhoto
+          ? NetworkImage(trimmedPhotoUrl)
+          : null,
+      onForegroundImageError: photoBytes == null && hasPhoto ? (_, _) {} : null,
+      child: Text(initial.toUpperCase()),
     );
   }
 }
@@ -1278,6 +1329,7 @@ class EmployeeFormDialog extends StatefulWidget {
 
 class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  final EmployeeRepository _repository = const EmployeeRepository();
   late final TextEditingController _nameController;
   late final TextEditingController _nipController;
   late final TextEditingController _positionController;
@@ -1286,7 +1338,12 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
   late final TextEditingController _phoneController;
   late final TextEditingController _addressController;
 
+  Uint8List? _selectedPhotoBytes;
+  String? _selectedPhotoName;
+  late String _photoUrl;
   late bool _isActive;
+  bool _isSubmitting = false;
+  bool _isPickingPhoto = false;
 
   bool get _isEditing => widget.employee != null;
 
@@ -1303,11 +1360,14 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
     _emailController = TextEditingController(text: employee?.email ?? '');
     _phoneController = TextEditingController(text: employee?.phone ?? '');
     _addressController = TextEditingController(text: employee?.address ?? '');
+    _photoUrl = employee?.photoUrl ?? '';
     _isActive = employee?.isActive ?? true;
+    _nameController.addListener(_refreshPreview);
   }
 
   @override
   void dispose() {
+    _nameController.removeListener(_refreshPreview);
     _nameController.dispose();
     _nipController.dispose();
     _positionController.dispose();
@@ -1318,18 +1378,129 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  void _refreshPreview() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  Future<void> _pickPhoto() async {
+    if (_isPickingPhoto || _isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _isPickingPhoto = true;
+    });
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+
+      if (!mounted || result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.single;
+      if (file.bytes == null) {
+        throw Exception('File foto tidak terbaca.');
+      }
+
+      setState(() {
+        _selectedPhotoBytes = file.bytes!;
+        _selectedPhotoName = file.name;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memilih foto: $error'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPickingPhoto = false;
+        });
+      }
+    }
+  }
+
+  void _removePhoto() {
+    setState(() {
+      _selectedPhotoBytes = null;
+      _selectedPhotoName = null;
+      _photoUrl = '';
+    });
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
+    setState(() {
+      _isSubmitting = true;
+    });
+
     final existing = widget.employee;
     final now = DateTime.now().toUtc();
+    var photoUrl = _photoUrl;
+
+    try {
+      if (_selectedPhotoBytes != null && _selectedPhotoName != null) {
+        photoUrl = await _repository.uploadEmployeePhoto(
+          bytes: _selectedPhotoBytes!,
+          fileName: _selectedPhotoName!,
+        );
+      }
+    } on StorageException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload foto gagal: $error'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
 
     final employee = Employee(
       id: existing?.id ?? '',
       userId: existing?.userId ?? widget.userId,
       name: _nameController.text.trim(),
+      photoUrl: photoUrl,
       nip: _nipController.text.trim(),
       position: _positionController.text.trim(),
       department: _departmentController.text.trim(),
@@ -1340,6 +1511,10 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     );
+
+    if (!mounted) {
+      return;
+    }
 
     Navigator.pop(context, employee);
   }
@@ -1356,10 +1531,91 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: EmployeeAvatar(
+                    name: _nameController.text.trim().isEmpty
+                        ? 'Pegawai'
+                        : _nameController.text.trim(),
+                    photoUrl: _photoUrl,
+                    photoBytes: _selectedPhotoBytes,
+                    radius: 30,
+                  ),
+                ),
                 _buildField(
                   controller: _nameController,
                   label: 'Nama Lengkap',
                   icon: Icons.badge_outlined,
+                ),
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Foto Pegawai',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _selectedPhotoName ??
+                            (_photoUrl.isEmpty
+                                ? 'Belum ada foto dipilih'
+                                : 'Foto tersimpan dan akan dipakai lagi'),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isSubmitting ? null : _pickPhoto,
+                              icon: _isPickingPhoto
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.photo_library_outlined),
+                              label: Text(
+                                _selectedPhotoBytes != null ||
+                                        _photoUrl.isNotEmpty
+                                    ? 'Ganti Foto'
+                                    : 'Pilih Foto',
+                              ),
+                            ),
+                          ),
+                          if (_selectedPhotoBytes != null ||
+                              _photoUrl.isNotEmpty)
+                            const SizedBox(width: 12),
+                          if (_selectedPhotoBytes != null ||
+                              _photoUrl.isNotEmpty)
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: _isSubmitting ? null : _removePhoto,
+                                icon: const Icon(Icons.delete_outline),
+                                label: const Text('Hapus Foto'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 _buildField(
                   controller: _nipController,
@@ -1427,12 +1683,18 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
           child: const Text('Batal'),
         ),
         FilledButton(
-          onPressed: _submit,
-          child: Text(_isEditing ? 'Simpan Perubahan' : 'Tambah'),
+          onPressed: _isSubmitting ? null : _submit,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(_isEditing ? 'Simpan Perubahan' : 'Tambah'),
         ),
       ],
     );

@@ -4,6 +4,7 @@ create table if not exists public.employees (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
+  photo_url text not null default '',
   nip text not null,
   position text not null,
   department text not null,
@@ -15,10 +16,75 @@ create table if not exists public.employees (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.employees
+  add column if not exists photo_url text not null default '';
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'employee-photos',
+  'employee-photos',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do nothing;
+
+drop policy if exists "employee_photos_public_read"
+on storage.objects;
+
+create policy "employee_photos_public_read"
+on storage.objects
+for select
+to public
+using (bucket_id = 'employee-photos');
+
+drop policy if exists "employee_photos_owner_insert"
+on storage.objects;
+
+create policy "employee_photos_owner_insert"
+on storage.objects
+for insert
+to authenticated, anon
+with check (
+  bucket_id = 'employee-photos'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+drop policy if exists "employee_photos_owner_update"
+on storage.objects;
+
+create policy "employee_photos_owner_update"
+on storage.objects
+for update
+to authenticated, anon
+using (
+  bucket_id = 'employee-photos'
+  and auth.uid()::text = (storage.foldername(name))[1]
+)
+with check (
+  bucket_id = 'employee-photos'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+drop policy if exists "employee_photos_owner_delete"
+on storage.objects;
+
+create policy "employee_photos_owner_delete"
+on storage.objects
+for delete
+to authenticated, anon
+using (
+  bucket_id = 'employee-photos'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
 create unique index if not exists employees_user_nip_idx
   on public.employees (user_id, nip);
 
 alter table public.employees enable row level security;
+
+drop policy if exists "users_can_select_own_employees"
+on public.employees;
 
 create policy "users_can_select_own_employees"
 on public.employees
@@ -26,11 +92,17 @@ for select
 to authenticated, anon
 using (auth.uid() = user_id);
 
+drop policy if exists "users_can_insert_own_employees"
+on public.employees;
+
 create policy "users_can_insert_own_employees"
 on public.employees
 for insert
 to authenticated, anon
 with check (auth.uid() = user_id);
+
+drop policy if exists "users_can_update_own_employees"
+on public.employees;
 
 create policy "users_can_update_own_employees"
 on public.employees
@@ -38,6 +110,9 @@ for update
 to authenticated, anon
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+drop policy if exists "users_can_delete_own_employees"
+on public.employees;
 
 create policy "users_can_delete_own_employees"
 on public.employees

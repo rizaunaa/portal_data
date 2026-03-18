@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/employee.dart';
@@ -5,6 +8,8 @@ import '../supabase_bootstrap.dart';
 
 class EmployeeRepository {
   const EmployeeRepository();
+
+  static const String _employeePhotosBucket = 'employee-photos';
 
   User? get currentUser => supabaseClient.auth.currentUser;
 
@@ -57,5 +62,37 @@ class EmployeeRepository {
   Future<void> deleteEmployee(String id) async {
     await ensureSignedIn();
     await supabaseClient.from('employees').delete().eq('id', id);
+  }
+
+  Future<String> uploadEmployeePhoto({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    await ensureSignedIn();
+
+    final userId = currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      throw const AuthException('User belum terautentikasi.');
+    }
+
+    final safeFileName = fileName.trim().replaceAll(
+      RegExp(r'[^A-Za-z0-9._-]'),
+      '_',
+    );
+    final objectPath =
+        '$userId/${DateTime.now().millisecondsSinceEpoch}_$safeFileName';
+    final contentType = lookupMimeType(fileName, headerBytes: bytes);
+
+    await supabaseClient.storage
+        .from(_employeePhotosBucket)
+        .uploadBinary(
+          objectPath,
+          bytes,
+          fileOptions: FileOptions(contentType: contentType, upsert: false),
+        );
+
+    return supabaseClient.storage
+        .from(_employeePhotosBucket)
+        .getPublicUrl(objectPath);
   }
 }

@@ -3,6 +3,7 @@ class Employee {
     required this.id,
     required this.userId,
     required this.name,
+    required this.photoUrl,
     required this.nip,
     required this.position,
     required this.department,
@@ -17,6 +18,7 @@ class Employee {
   final String id;
   final String userId;
   final String name;
+  final String photoUrl;
   final String nip;
   final String position;
   final String department;
@@ -31,6 +33,7 @@ class Employee {
     return {
       'user_id': userId,
       'name': name,
+      'photo_url': photoUrl,
       'nip': nip,
       'position': position,
       'department': department,
@@ -54,6 +57,7 @@ class Employee {
       id: map['id'] as String,
       userId: map['user_id'] as String,
       name: map['name'] as String,
+      photoUrl: map['photo_url'] as String? ?? '',
       nip: map['nip'] as String,
       position: map['position'] as String,
       department: map['department'] as String,
