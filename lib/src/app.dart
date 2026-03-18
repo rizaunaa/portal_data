@@ -204,11 +204,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   final EmployeeRepository _repository = const EmployeeRepository();
   final TextEditingController _searchController = TextEditingController();
   final List<Employee> _employees = [];
+  static const int _pageSize = 10;
 
   bool _isLoading = true;
   bool _isSaving = false;
   String _searchQuery = '';
   String? _errorMessage;
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -216,6 +218,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
+        _currentPage = 0;
       });
     });
     _loadEmployees();
@@ -242,6 +245,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _employees
           ..clear()
           ..addAll(employees);
+        _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
     } on AuthException catch (error) {
       _errorMessage = error.message;
@@ -296,6 +300,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         } else {
           _employees.insert(0, savedEmployee);
         }
+        _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
 
       _showMessage(
@@ -355,6 +360,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       }
       setState(() {
         _employees.removeWhere((item) => item.id == employee.id);
+        _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
       _showMessage('${employee.name} berhasil dihapus.');
     } on PostgrestException catch (error) {
@@ -403,15 +409,58 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }).toList();
   }
 
+  int get _totalPages {
+    final totalItems = _filteredEmployees.length;
+    if (totalItems == 0) {
+      return 1;
+    }
+
+    return (totalItems / _pageSize).ceil();
+  }
+
+  List<Employee> get _paginatedEmployees {
+    final employees = _filteredEmployees;
+    final startIndex = _currentPage * _pageSize;
+    if (startIndex >= employees.length) {
+      return const [];
+    }
+
+    final endIndex = (startIndex + _pageSize).clamp(0, employees.length);
+    return employees.sublist(startIndex, endIndex);
+  }
+
+  void _syncCurrentPage({required int filteredCount}) {
+    final totalPages = filteredCount == 0
+        ? 1
+        : (filteredCount / _pageSize).ceil();
+    final lastPage = totalPages - 1;
+    if (_currentPage > lastPage) {
+      _currentPage = lastPage;
+    }
+    if (_currentPage < 0) {
+      _currentPage = 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final employees = _filteredEmployees;
+    final filteredEmployees = _filteredEmployees;
+    final employees = _paginatedEmployees;
     final totalEmployees = _employees.length;
     final activeEmployees = _employees.where((item) => item.isActive).length;
     final inactiveEmployees = totalEmployees - activeEmployees;
+    final startItem = filteredEmployees.isEmpty
+        ? 0
+        : (_currentPage * _pageSize) + 1;
+    final endItem = filteredEmployees.isEmpty
+        ? 0
+        : ((_currentPage * _pageSize) + employees.length).clamp(
+            0,
+            filteredEmployees.length,
+          );
 
     return Scaffold(
       appBar: AppBar(
@@ -573,37 +622,77 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                         ),
                                         child: Align(
                                           alignment: Alignment.topLeft,
-                                          child: employees.isEmpty
+                                          child: filteredEmployees.isEmpty
                                               ? const EmptyEmployeeState()
-                                              : isWide
-                                              ? EmployeeDataTable(
-                                                  employees: employees,
-                                                  onEdit: _openEmployeeForm,
-                                                  onDelete: _deleteEmployee,
-                                                )
                                               : Column(
-                                                  children: employees
-                                                      .map(
-                                                        (employee) => Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                bottom: 12,
-                                                              ),
-                                                          child: EmployeeListCard(
-                                                            employee: employee,
-                                                            onEdit: () =>
-                                                                _openEmployeeForm(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    if (isWide)
+                                                      EmployeeDataTable(
+                                                        employees: employees,
+                                                        onEdit:
+                                                            _openEmployeeForm,
+                                                        onDelete:
+                                                            _deleteEmployee,
+                                                      )
+                                                    else
+                                                      Column(
+                                                        children: employees
+                                                            .map(
+                                                              (
+                                                                employee,
+                                                              ) => Padding(
+                                                                padding:
+                                                                    const EdgeInsets.only(
+                                                                      bottom:
+                                                                          12,
+                                                                    ),
+                                                                child: EmployeeListCard(
                                                                   employee:
                                                                       employee,
+                                                                  onEdit: () =>
+                                                                      _openEmployeeForm(
+                                                                        employee:
+                                                                            employee,
+                                                                      ),
+                                                                  onDelete: () =>
+                                                                      _deleteEmployee(
+                                                                        employee,
+                                                                      ),
                                                                 ),
-                                                            onDelete: () =>
-                                                                _deleteEmployee(
-                                                                  employee,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                      )
-                                                      .toList(),
+                                                              ),
+                                                            )
+                                                            .toList(),
+                                                      ),
+                                                    const SizedBox(height: 16),
+                                                    PaginationFooter(
+                                                      currentPage: _currentPage,
+                                                      totalPages: _totalPages,
+                                                      startItem: startItem,
+                                                      endItem: endItem,
+                                                      totalItems:
+                                                          filteredEmployees
+                                                              .length,
+                                                      onPrevious:
+                                                          _currentPage == 0
+                                                          ? null
+                                                          : () {
+                                                              setState(() {
+                                                                _currentPage--;
+                                                              });
+                                                            },
+                                                      onNext:
+                                                          _currentPage >=
+                                                              _totalPages - 1
+                                                          ? null
+                                                          : () {
+                                                              setState(() {
+                                                                _currentPage++;
+                                                              });
+                                                            },
+                                                    ),
+                                                  ],
                                                 ),
                                         ),
                                       ),
@@ -627,6 +716,69 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                 );
               },
             ),
+    );
+  }
+}
+
+class PaginationFooter extends StatelessWidget {
+  const PaginationFooter({
+    super.key,
+    required this.currentPage,
+    required this.totalPages,
+    required this.startItem,
+    required this.endItem,
+    required this.totalItems,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int currentPage;
+  final int totalPages;
+  final int startItem;
+  final int endItem;
+  final int totalItems;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: 12,
+      spacing: 12,
+      children: [
+        Text(
+          'Menampilkan $startItem-$endItem dari $totalItems data',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+        ),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          children: [
+            Text(
+              'Halaman ${currentPage + 1} / $totalPages',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onPrevious,
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Sebelumnya'),
+            ),
+            FilledButton.icon(
+              onPressed: onNext,
+              icon: const Icon(Icons.chevron_right),
+              label: const Text('Berikutnya'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
