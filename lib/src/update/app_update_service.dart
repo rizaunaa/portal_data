@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../supabase_bootstrap.dart';
+import 'app_package_info.dart';
 
 class AppUpdateInfo {
   const AppUpdateInfo({
@@ -43,7 +43,7 @@ class AppUpdateService {
       return null;
     }
 
-    final packageInfo = await PackageInfo.fromPlatform();
+    final packageInfo = await AppPackageInfoService.instance.fromPlatform();
     final response = await http.get(Uri.parse(updateManifestUrl));
     if (response.statusCode == 404) {
       throw Exception(
