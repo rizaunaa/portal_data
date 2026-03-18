@@ -663,6 +663,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                                 child: EmployeeListCard(
                                                                   employee:
                                                                       employee,
+                                                                  onViewDetails: () =>
+                                                                      _showEmployeeDetails(
+                                                                        employee,
+                                                                      ),
                                                                   onEdit: () =>
                                                                       _openEmployeeForm(
                                                                         employee:
@@ -1089,11 +1093,13 @@ class EmployeeListCard extends StatelessWidget {
   const EmployeeListCard({
     super.key,
     required this.employee,
+    required this.onViewDetails,
     required this.onEdit,
     required this.onDelete,
   });
 
   final Employee employee;
+  final VoidCallback onViewDetails;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -1101,69 +1107,79 @@ class EmployeeListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF162033) : const Color(0xFFF9FCFB),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        onTap: onViewDetails,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF162033) : const Color(0xFFF9FCFB),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+            ),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  EmployeeAvatar(
+                    name: employee.name,
+                    photoUrl: employee.photoUrl,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          employee.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${employee.position} • ${employee.department}',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusChip(isActive: employee.isActive),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _InfoRow(label: 'NIP', value: employee.nip),
+              _InfoRow(label: 'Email', value: employee.email),
+              _InfoRow(label: 'Telepon', value: employee.phone),
+              _InfoRow(label: 'Alamat', value: employee.address),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Edit'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Hapus'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              EmployeeAvatar(name: employee.name, photoUrl: employee.photoUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      employee.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      '${employee.position} • ${employee.department}',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              StatusChip(isActive: employee.isActive),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _InfoRow(label: 'NIP', value: employee.nip),
-          _InfoRow(label: 'Email', value: employee.email),
-          _InfoRow(label: 'Telepon', value: employee.phone),
-          _InfoRow(label: 'Alamat', value: employee.address),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.tonalIcon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Hapus'),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
