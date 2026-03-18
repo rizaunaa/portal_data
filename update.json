@@ -1,0 +1,14 @@
+{
+  "version": "0.1.0",
+  "build_number": 1,
+  "mandatory": false,
+  "published_at": "2026-03-18T00:00:00Z",
+  "notes": "Rilis awal Portal Kepegawaian.",
+  "downloads": {
+    "windows": "https://github.com/rizaunaa/portal_data/releases/latest",
+    "android": "https://github.com/rizaunaa/portal_data/releases/latest",
+    "macos": "https://github.com/rizaunaa/portal_data/releases/latest",
+    "linux": "https://github.com/rizaunaa/portal_data/releases/latest",
+    "web": "https://github.com/rizaunaa/portal_data"
+  }
+}

@@ -5,12 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/employee.dart';
 import 'services/employee_repository.dart';
 import 'supabase_bootstrap.dart';
+import 'update/app_update_widgets.dart';
 
 class EmployeeApp extends StatelessWidget {
-  const EmployeeApp({
-    super.key,
-    required this.savedThemeMode,
-  });
+  const EmployeeApp({super.key, required this.savedThemeMode});
 
   final AdaptiveThemeMode? savedThemeMode;
 
@@ -104,9 +102,11 @@ class EmployeeApp extends StatelessWidget {
           title: 'Portal Kepegawaian',
           theme: theme,
           darkTheme: darkTheme,
-          home: isSupabaseConfigured
-              ? const EmployeeHomePage()
-              : const SupabaseSetupPage(),
+          home: AutoUpdateGate(
+            child: isSupabaseConfigured
+                ? const EmployeeHomePage()
+                : const SupabaseSetupPage(),
+          ),
         );
       },
     );
@@ -121,9 +121,7 @@ class SupabaseSetupPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Portal Kepegawaian'),
-        actions: const [
-          ThemeModeButton(),
-        ],
+        actions: const [UpdateActionButton(), ThemeModeButton()],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -152,14 +150,10 @@ class SupabaseSetupPage extends StatelessWidget {
                     ),
                     SizedBox(height: 20),
                     _CommandBlock(
-                      command:
-                          'SUPABASE_URL=https://YOUR-PROJECT.supabase.co',
+                      command: 'SUPABASE_URL=https://YOUR-PROJECT.supabase.co',
                     ),
                     SizedBox(height: 12),
-                    _CommandBlock(
-                      command:
-                          'SUPABASE_ANON_KEY=YOUR_ANON_KEY',
-                    ),
+                    _CommandBlock(command: 'SUPABASE_ANON_KEY=YOUR_ANON_KEY'),
                     SizedBox(height: 20),
                     Text(
                       'Setelah file .env terisi, aplikasi akan login anonim ke Supabase lalu semua operasi CRUD memakai tabel employees.',
@@ -193,10 +187,7 @@ class _CommandBlock extends StatelessWidget {
       ),
       child: SelectableText(
         command,
-        style: const TextStyle(
-          color: Colors.white,
-          fontFamily: 'Courier',
-        ),
+        style: const TextStyle(color: Colors.white, fontFamily: 'Courier'),
       ),
     );
   }
@@ -297,7 +288,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       }
 
       setState(() {
-        final index = _employees.indexWhere((item) => item.id == savedEmployee.id);
+        final index = _employees.indexWhere(
+          (item) => item.id == savedEmployee.id,
+        );
         if (index >= 0) {
           _employees[index] = savedEmployee;
         } else {
@@ -340,9 +333,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             child: const Text('Hapus'),
           ),
         ],
@@ -426,6 +417,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       appBar: AppBar(
         title: const Text('Portal Kepegawaian'),
         actions: [
+          const UpdateActionButton(),
           const ThemeModeButton(),
           IconButton(
             tooltip: 'Refresh',
@@ -442,186 +434,183 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? ErrorState(message: _errorMessage!, onRetry: _loadEmployees)
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth >= 900;
+          ? ErrorState(message: _errorMessage!, onRetry: _loadEmployees)
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 900;
 
-                    return Stack(
-                      children: [
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1180),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                return Stack(
+                  children: [
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1180),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                spacing: 16,
+                                runSpacing: 16,
                                 children: [
-                                  Wrap(
-                                    spacing: 16,
-                                    runSpacing: 16,
-                                    children: [
-                                      SummaryCard(
-                                        title: 'Total Pegawai',
-                                        value: '$totalEmployees',
-                                        icon: Icons.groups_2_outlined,
-                                        color: const Color(0xFF0F766E),
-                                      ),
-                                      SummaryCard(
-                                        title: 'Pegawai Aktif',
-                                        value: '$activeEmployees',
-                                        icon: Icons.verified_user_outlined,
-                                        color: const Color(0xFF2563EB),
-                                      ),
-                                      SummaryCard(
-                                        title: 'Nonaktif',
-                                        value: '$inactiveEmployees',
-                                        icon: Icons.person_off_outlined,
-                                        color: const Color(0xFFB45309),
-                                      ),
-                                    ],
+                                  SummaryCard(
+                                    title: 'Total Pegawai',
+                                    value: '$totalEmployees',
+                                    icon: Icons.groups_2_outlined,
+                                    color: const Color(0xFF0F766E),
                                   ),
-                                  const SizedBox(height: 20),
-                                  Container(
-                                    decoration: BoxDecoration(
+                                  SummaryCard(
+                                    title: 'Pegawai Aktif',
+                                    value: '$activeEmployees',
+                                    icon: Icons.verified_user_outlined,
+                                    color: const Color(0xFF2563EB),
+                                  ),
+                                  SummaryCard(
+                                    title: 'Nonaktif',
+                                    value: '$inactiveEmployees',
+                                    icon: Icons.person_off_outlined,
+                                    color: const Color(0xFFB45309),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF111827)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? colorScheme.outline
+                                        : const Color(0xFFE5E7EB),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
                                       color: isDark
-                                          ? const Color(0xFF111827)
-                                          : Colors.white,
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: isDark
-                                            ? colorScheme.outline
-                                            : const Color(0xFFE5E7EB),
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: isDark
-                                              ? const Color(0x33000000)
-                                              : const Color(0x12000000),
-                                          blurRadius: isDark ? 18 : 24,
-                                          offset: const Offset(0, 10),
-                                        ),
-                                      ],
+                                          ? const Color(0x33000000)
+                                          : const Color(0x12000000),
+                                      blurRadius: isDark ? 18 : 24,
+                                      offset: const Offset(0, 10),
                                     ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(20),
-                                      child: Column(
+                                  ],
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Wrap(
+                                        alignment: WrapAlignment.spaceBetween,
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            WrapCrossAlignment.center,
+                                        runSpacing: 12,
+                                        spacing: 12,
                                         children: [
-                                          Wrap(
-                                            alignment:
-                                                WrapAlignment.spaceBetween,
+                                          Column(
                                             crossAxisAlignment:
-                                                WrapCrossAlignment.center,
-                                            runSpacing: 12,
-                                            spacing: 12,
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'Data Pegawai',
-                                                    style: TextStyle(
-                                                      fontSize: 22,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      color:
-                                                          colorScheme.onSurface,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Semua perubahan sekarang tersimpan di Supabase.',
-                                                    style: TextStyle(
-                                                      color:
-                                                          colorScheme.onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                ],
+                                              Text(
+                                                'Data Pegawai',
+                                                style: TextStyle(
+                                                  fontSize: 22,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: colorScheme.onSurface,
+                                                ),
                                               ),
-                                              SizedBox(
-                                                width: isWide
-                                                    ? 320
-                                                    : double.infinity,
-                                                child: TextField(
-                                                  controller: _searchController,
-                                                  decoration: InputDecoration(
-                                                    hintText:
-                                                        'Cari nama, NIP, jabatan, unit...',
-                                                    prefixIcon:
-                                                        const Icon(Icons.search),
-                                                    suffixIcon:
-                                                        _searchQuery.isNotEmpty
-                                                        ? IconButton(
-                                                            onPressed:
-                                                                _searchController
-                                                                    .clear,
-                                                            icon: const Icon(
-                                                              Icons.close,
-                                                            ),
-                                                          )
-                                                        : null,
-                                                  ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Semua perubahan sekarang tersimpan di Supabase.',
+                                                style: TextStyle(
+                                                  color: colorScheme
+                                                      .onSurfaceVariant,
                                                 ),
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 20),
-                                          if (employees.isEmpty)
-                                            const EmptyEmployeeState()
-                                          else if (isWide)
-                                            EmployeeDataTable(
-                                              employees: employees,
-                                              onEdit: _openEmployeeForm,
-                                              onDelete: _deleteEmployee,
-                                            )
-                                          else
-                                            Column(
-                                              children: employees
-                                                  .map(
-                                                    (employee) => Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            bottom: 12,
-                                                          ),
-                                                      child: EmployeeListCard(
-                                                        employee: employee,
-                                                        onEdit: () =>
-                                                            _openEmployeeForm(
-                                                              employee:
-                                                                  employee,
-                                                            ),
-                                                        onDelete: () =>
-                                                            _deleteEmployee(
-                                                              employee,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  )
-                                                  .toList(),
+                                          SizedBox(
+                                            width: isWide
+                                                ? 320
+                                                : double.infinity,
+                                            child: TextField(
+                                              controller: _searchController,
+                                              decoration: InputDecoration(
+                                                hintText:
+                                                    'Cari nama, NIP, jabatan, unit...',
+                                                prefixIcon: const Icon(
+                                                  Icons.search,
+                                                ),
+                                                suffixIcon:
+                                                    _searchQuery.isNotEmpty
+                                                    ? IconButton(
+                                                        onPressed:
+                                                            _searchController
+                                                                .clear,
+                                                        icon: const Icon(
+                                                          Icons.close,
+                                                        ),
+                                                      )
+                                                    : null,
+                                              ),
                                             ),
+                                          ),
                                         ],
                                       ),
-                                    ),
+                                      const SizedBox(height: 20),
+                                      if (employees.isEmpty)
+                                        const EmptyEmployeeState()
+                                      else if (isWide)
+                                        EmployeeDataTable(
+                                          employees: employees,
+                                          onEdit: _openEmployeeForm,
+                                          onDelete: _deleteEmployee,
+                                        )
+                                      else
+                                        Column(
+                                          children: employees
+                                              .map(
+                                                (employee) => Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        bottom: 12,
+                                                      ),
+                                                  child: EmployeeListCard(
+                                                    employee: employee,
+                                                    onEdit: () =>
+                                                        _openEmployeeForm(
+                                                          employee: employee,
+                                                        ),
+                                                    onDelete: () =>
+                                                        _deleteEmployee(
+                                                          employee,
+                                                        ),
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
-                        if (_isSaving)
-                          const Positioned(
-                            left: 0,
-                            right: 0,
-                            top: 0,
-                            child: LinearProgressIndicator(minHeight: 3),
-                          ),
-                      ],
-                    );
-                  },
-                ),
+                      ),
+                    ),
+                    if (_isSaving)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        child: LinearProgressIndicator(minHeight: 3),
+                      ),
+                  ],
+                );
+              },
+            ),
     );
   }
 }
@@ -643,9 +632,7 @@ class ThemeModeButton extends StatelessWidget {
           adaptiveTheme.setDark();
         }
       },
-      icon: Icon(
-        isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-      ),
+      icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
     );
   }
 }
@@ -937,10 +924,9 @@ class StatusChip extends StatelessWidget {
             : (isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E)),
         fontWeight: FontWeight.w700,
       ),
-      backgroundColor:
-          isActive
-              ? (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7))
-              : (isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7)),
+      backgroundColor: isActive
+          ? (isDark ? const Color(0xFF14532D) : const Color(0xFFDCFCE7))
+          : (isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7)),
       side: BorderSide.none,
       visualDensity: VisualDensity.compact,
     );
@@ -1044,11 +1030,7 @@ class EmptyEmployeeState extends StatelessWidget {
 }
 
 class EmployeeFormDialog extends StatefulWidget {
-  const EmployeeFormDialog({
-    super.key,
-    this.employee,
-    required this.userId,
-  });
+  const EmployeeFormDialog({super.key, this.employee, required this.userId});
 
   final Employee? employee;
   final String userId;
@@ -1233,7 +1215,8 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
         controller: controller,
         keyboardType: keyboardType,
         maxLines: maxLines,
-        validator: validator ??
+        validator:
+            validator ??
             (value) {
               if (value == null || value.trim().isEmpty) {
                 return '$label wajib diisi';
@@ -1243,9 +1226,7 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 String get supabaseUrl => dotenv.maybeGet('SUPABASE_URL') ?? '';
 String get supabaseAnonKey => dotenv.maybeGet('SUPABASE_ANON_KEY') ?? '';
+String get updateManifestUrl => dotenv.maybeGet('UPDATE_MANIFEST_URL') ?? '';
 
 bool get isSupabaseConfigured =>
     supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
@@ -14,10 +15,7 @@ Future<void> initializeSupabase() async {
     return;
   }
 
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 }
 
 SupabaseClient get supabaseClient => Supabase.instance.client;
