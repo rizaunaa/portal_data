@@ -875,31 +875,19 @@ class EmployeeDataTable extends StatelessWidget {
     required this.onDelete,
   });
 
-  static const double _nameColumnWidth = 180;
-  static const double _photoColumnWidth = 84;
-  static const double _nipColumnWidth = 120;
-  static const double _positionColumnWidth = 150;
-  static const double _departmentColumnWidth = 130;
-  static const double _contactColumnWidth = 180;
-  static const double _statusColumnWidth = 84;
-  static const double _actionColumnWidth = 96;
-
   final List<Employee> employees;
   final Future<void> Function(Employee employee) onViewDetails;
   final Future<void> Function({Employee? employee}) onEdit;
   final Future<void> Function(Employee employee) onDelete;
 
-  DataColumn _buildColumn(String label, double width) {
-    return DataColumn(
-      label: SizedBox(
-        width: width,
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
-  }
+  static const int _photoFlex = 2;
+  static const int _nameFlex = 5;
+  static const int _nipFlex = 3;
+  static const int _positionFlex = 4;
+  static const int _departmentFlex = 3;
+  static const int _contactFlex = 5;
+  static const int _statusFlex = 3;
+  static const int _actionFlex = 3;
 
   Widget _singleLineText(String value, {FontWeight? fontWeight, Color? color}) {
     return Text(
@@ -915,16 +903,31 @@ class EmployeeDataTable extends StatelessWidget {
     );
   }
 
-  Widget _buildPhotoCell(Employee employee) {
-    return SizedBox(
-      width: _photoColumnWidth,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: EmployeeAvatar(
-          name: employee.name,
-          photoUrl: employee.photoUrl,
-          radius: 20,
+  Widget _headerCell(String label, int flex) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
+      ),
+    );
+  }
+
+  Widget _dataCell({
+    required int flex,
+    required Widget child,
+    Alignment alignment = Alignment.centerLeft,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Align(alignment: alignment, child: child),
       ),
     );
   }
@@ -932,127 +935,151 @@ class EmployeeDataTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columnSpacing: 16,
-        horizontalMargin: 12,
-        headingRowHeight: 44,
-        dataRowMinHeight: 52,
-        dataRowMaxHeight: 60,
-        columns: [
-          _buildColumn('Foto', _photoColumnWidth),
-          _buildColumn('Nama', _nameColumnWidth),
-          _buildColumn('NIP', _nipColumnWidth),
-          _buildColumn('Jabatan', _positionColumnWidth),
-          _buildColumn('Unit', _departmentColumnWidth),
-          _buildColumn('Kontak', _contactColumnWidth),
-          _buildColumn('Status', _statusColumnWidth),
-          _buildColumn('Aksi', _actionColumnWidth),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF111827) : const Color(0xFFF8FAFC),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+            ),
+            child: Row(
+              children: [
+                _headerCell('Foto', _photoFlex),
+                _headerCell('Nama', _nameFlex),
+                _headerCell('NIP', _nipFlex),
+                _headerCell('Jabatan', _positionFlex),
+                _headerCell('Unit', _departmentFlex),
+                _headerCell('Kontak', _contactFlex),
+                _headerCell('Status', _statusFlex),
+                _headerCell('Aksi', _actionFlex),
+              ],
+            ),
+          ),
+          ...employees.asMap().entries.map((entry) {
+            final index = entry.key;
+            final employee = entry.value;
+            final isLast = index == employees.length - 1;
+
+            return InkWell(
+              onTap: () => onViewDetails(employee),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  border: isLast
+                      ? null
+                      : Border(
+                          bottom: BorderSide(
+                            color: isDark
+                                ? colorScheme.outline.withValues(alpha: 0.35)
+                                : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                ),
+                child: Row(
+                  children: [
+                    _dataCell(
+                      flex: _photoFlex,
+                      child: EmployeeAvatar(
+                        name: employee.name,
+                        photoUrl: employee.photoUrl,
+                        radius: 20,
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _nameFlex,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _singleLineText(
+                            employee.name,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          _singleLineText(
+                            employee.address,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _nipFlex,
+                      child: _singleLineText(employee.nip),
+                    ),
+                    _dataCell(
+                      flex: _positionFlex,
+                      child: _singleLineText(employee.position),
+                    ),
+                    _dataCell(
+                      flex: _departmentFlex,
+                      child: _singleLineText(employee.department),
+                    ),
+                    _dataCell(
+                      flex: _contactFlex,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _singleLineText(employee.email),
+                          _singleLineText(
+                            employee.phone,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _statusFlex,
+                      child: StatusChip(isActive: employee.isActive),
+                    ),
+                    _dataCell(
+                      flex: _actionFlex,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Edit',
+                              onPressed: () => onEdit(employee: employee),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Hapus',
+                              onPressed: () => onDelete(employee),
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
-        rows: employees.map((employee) {
-          return DataRow(
-            onSelectChanged: (_) => onViewDetails(employee),
-            cells: [
-              DataCell(_buildPhotoCell(employee)),
-              DataCell(
-                SizedBox(
-                  width: _nameColumnWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _singleLineText(
-                        employee.name,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      _singleLineText(
-                        employee.address,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _nipColumnWidth,
-                  child: _singleLineText(employee.nip),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _positionColumnWidth,
-                  child: _singleLineText(employee.position),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _departmentColumnWidth,
-                  child: _singleLineText(employee.department),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _contactColumnWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _singleLineText(employee.email),
-                      _singleLineText(
-                        employee.phone,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _statusColumnWidth,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: StatusChip(isActive: employee.isActive),
-                  ),
-                ),
-              ),
-              DataCell(
-                SizedBox(
-                  width: _actionColumnWidth,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 34,
-                        height: 34,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Edit',
-                          onPressed: () => onEdit(employee: employee),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      SizedBox(
-                        width: 34,
-                        height: 34,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Hapus',
-                          onPressed: () => onDelete(employee),
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        }).toList(),
       ),
     );
   }
