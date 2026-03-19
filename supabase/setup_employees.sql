@@ -206,6 +206,29 @@ $$;
 
 grant execute on function public.request_employee_data_access(text) to anon, authenticated;
 
+create or replace function public.cancel_employee_data_access_request(target_user_id_input text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid;
+begin
+  current_user_id := auth.uid();
+  if current_user_id is null then
+    raise exception 'User belum login.';
+  end if;
+
+  delete from public.employee_data_access_requests
+  where requester_user_id = current_user_id
+    and target_user_id = target_user_id_input::uuid
+    and status = 'pending';
+end;
+$$;
+
+grant execute on function public.cancel_employee_data_access_request(text) to anon, authenticated;
+
 create or replace function public.incoming_employee_access_requests()
 returns jsonb
 language sql

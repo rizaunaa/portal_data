@@ -160,6 +160,16 @@ class EmployeeRepository {
     );
   }
 
+  Future<void> cancelEmployeeDataAccessRequest({
+    required String targetUserId,
+  }) async {
+    await ensureSignedIn();
+    await supabaseClient.rpc(
+      'cancel_employee_data_access_request',
+      params: {'target_user_id_input': targetUserId},
+    );
+  }
+
   Future<List<DataAccessRequestNotification>> fetchIncomingAccessRequests() async {
     await ensureSignedIn();
 

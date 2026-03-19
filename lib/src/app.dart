@@ -570,6 +570,32 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
   }
 
+  Future<void> _cancelUserDataRequest(EmployeeUserActivity user) async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await _repository.cancelEmployeeDataAccessRequest(
+        targetUserId: user.userId,
+      );
+      await _refreshEmployeeUsers();
+      _showMessage('Permintaan akses ke ${user.userId} berhasil dibatalkan.');
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
   Future<void> _respondToIncomingRequest({
     required DataAccessRequestNotification request,
     required bool approve,
@@ -1025,6 +1051,11 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     onRequestAccess: user.isCurrentUser
                                         ? null
                                         : () => _requestUserData(user),
+                                    onCancelRequest:
+                                        user.requestStatus == 'pending' &&
+                                            !user.isCurrentUser
+                                        ? () => _cancelUserDataRequest(user)
+                                        : null,
                                     onViewData:
                                         user.canViewData && !user.isCurrentUser
                                         ? () => _openSharedEmployees(user)
@@ -1322,12 +1353,14 @@ class _UserListCard extends StatelessWidget {
     required this.user,
     required this.isBusy,
     this.onRequestAccess,
+    this.onCancelRequest,
     this.onViewData,
   });
 
   final EmployeeUserActivity user;
   final bool isBusy;
   final VoidCallback? onRequestAccess;
+  final VoidCallback? onCancelRequest;
   final VoidCallback? onViewData;
 
   String _formatDate(DateTime? value) {
@@ -1438,10 +1471,10 @@ class _UserListCard extends StatelessWidget {
     }
 
     if (user.requestStatus == 'pending') {
-      return OutlinedButton.icon(
-        onPressed: null,
-        icon: const Icon(Icons.hourglass_top_outlined),
-        label: const Text('Menunggu Persetujuan'),
+      return FilledButton.tonalIcon(
+        onPressed: isBusy ? null : onCancelRequest,
+        icon: const Icon(Icons.cancel_outlined),
+        label: const Text('Batalkan Request'),
       );
     }
 
