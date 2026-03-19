@@ -124,7 +124,13 @@ class SupabaseSetupPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Portal Kepegawaian'),
-        actions: const [UpdateActionButton(), ThemeModeButton()],
+        actions: [
+          AppBarQuickActionsButton(
+            pendingCount: 0,
+            onOpenNotifications: null,
+            onRefresh: null,
+          ),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -1106,16 +1112,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       appBar: AppBar(
         title: Text(_pageTitle),
         actions: [
-          NotificationBellButton(
+          AppBarQuickActionsButton(
             pendingCount: _incomingRequests.length,
-            onPressed: _openIncomingRequestsDialog,
-          ),
-          const UpdateActionButton(),
-          const ThemeModeButton(),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _isLoading ? null : _loadEmployees,
-            icon: const Icon(Icons.refresh),
+            onOpenNotifications: _openIncomingRequestsDialog,
+            onRefresh: _isLoading ? null : _loadEmployees,
           ),
         ],
       ),
@@ -1597,6 +1597,145 @@ class NotificationBellButton extends StatelessWidget {
         isLabelVisible: pendingCount > 0,
         count: pendingCount,
         child: const Icon(Icons.notifications_none_outlined),
+      ),
+    );
+  }
+}
+
+class AppBarQuickActionsButton extends StatelessWidget {
+  const AppBarQuickActionsButton({
+    super.key,
+    required this.pendingCount,
+    required this.onOpenNotifications,
+    required this.onRefresh,
+  });
+
+  final int pendingCount;
+  final Future<void> Function()? onOpenNotifications;
+  final Future<void> Function()? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Aksi cepat',
+      onPressed: () {
+        showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          builder: (sheetContext) {
+            final colorScheme = Theme.of(sheetContext).colorScheme;
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Aksi Cepat',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Notifikasi, update aplikasi, tema, dan refresh sekarang ada di satu tempat.',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 20),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        if (onOpenNotifications != null)
+                          _QuickActionTile(
+                            child: NotificationBellButton(
+                              pendingCount: pendingCount,
+                              onPressed: () async {
+                                Navigator.of(sheetContext).pop();
+                                await onOpenNotifications!();
+                              },
+                            ),
+                            label: 'Notifikasi',
+                          ),
+                        const _QuickActionTile(
+                          child: UpdateActionButton(),
+                          label: 'Update',
+                        ),
+                        const _QuickActionTile(
+                          child: ThemeModeButton(),
+                          label: 'Tema',
+                        ),
+                        _QuickActionTile(
+                          child: IconButton(
+                            tooltip: 'Refresh',
+                            onPressed: onRefresh == null
+                                ? null
+                                : () async {
+                                    Navigator.of(sheetContext).pop();
+                                    await onRefresh!();
+                                  },
+                            icon: const Icon(Icons.refresh),
+                          ),
+                          label: 'Refresh',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+      icon: Badge.count(
+        isLabelVisible: pendingCount > 0,
+        count: pendingCount,
+        child: const Icon(Icons.tune_outlined),
+      ),
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.child,
+    required this.label,
+  });
+
+  final Widget child;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 112,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          child,
+          const SizedBox(height: 8),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ],
       ),
     );
   }
