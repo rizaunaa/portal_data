@@ -36,6 +36,40 @@ class EmployeeDashboardStats {
   }
 }
 
+class EmployeeUserActivity {
+  const EmployeeUserActivity({
+    required this.userId,
+    required this.totalEmployees,
+    this.lastInputAt,
+  });
+
+  final String userId;
+  final int totalEmployees;
+  final DateTime? lastInputAt;
+
+  factory EmployeeUserActivity.fromMap(Map<String, dynamic> map) {
+    int parseCount(dynamic value) {
+      if (value is int) {
+        return value;
+      }
+      if (value is num) {
+        return value.toInt();
+      }
+      return int.tryParse('$value') ?? 0;
+    }
+
+    final lastInputAtValue = map['last_input_at'];
+
+    return EmployeeUserActivity(
+      userId: map['user_id'] as String? ?? '',
+      totalEmployees: parseCount(map['total_employees']),
+      lastInputAt: lastInputAtValue == null
+          ? null
+          : DateTime.tryParse(lastInputAtValue as String),
+    );
+  }
+}
+
 class EmployeeRepository {
   const EmployeeRepository();
 
@@ -70,6 +104,16 @@ class EmployeeRepository {
     final response = await supabaseClient.rpc('employee_dashboard_totals');
 
     return EmployeeDashboardStats.fromMap(response as Map<String, dynamic>);
+  }
+
+  Future<List<EmployeeUserActivity>> fetchEmployeeUsers() async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient.rpc('employee_users_list');
+
+    return (response as List<dynamic>)
+        .map((item) => EmployeeUserActivity.fromMap(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Employee> createEmployee(Employee employee) async {

@@ -99,6 +99,35 @@ $$;
 
 grant execute on function public.employee_dashboard_totals() to anon, authenticated;
 
+create or replace function public.employee_users_list()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'user_id', user_id,
+        'total_employees', total_employees,
+        'last_input_at', last_input_at
+      )
+      order by last_input_at desc, user_id
+    ),
+    '[]'::jsonb
+  )
+  from (
+    select
+      user_id::text as user_id,
+      count(*)::int as total_employees,
+      max(created_at) as last_input_at
+    from public.employees
+    group by user_id
+  ) employee_users;
+$$;
+
+grant execute on function public.employee_users_list() to anon, authenticated;
+
 drop policy if exists "users_can_select_own_employees"
 on public.employees;
 

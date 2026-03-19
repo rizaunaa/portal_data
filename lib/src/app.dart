@@ -196,7 +196,7 @@ class _CommandBlock extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, employees }
+enum _HomeSection { dashboard, employees, users }
 
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
@@ -218,6 +218,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   int _currentPage = 0;
   _HomeSection _selectedSection = _HomeSection.dashboard;
   EmployeeDashboardStats? _dashboardStats;
+  List<EmployeeUserActivity> _employeeUsers = const [];
 
   @override
   void initState() {
@@ -246,13 +247,21 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     try {
       final employeesFuture = _repository.fetchEmployees();
       final dashboardStatsFuture = _repository.fetchDashboardStats();
+      final employeeUsersFuture = _repository.fetchEmployeeUsers();
       final employees = await employeesFuture;
       EmployeeDashboardStats? dashboardStats;
+      List<EmployeeUserActivity>? employeeUsers;
 
       try {
         dashboardStats = await dashboardStatsFuture;
       } catch (_) {
         dashboardStats = _dashboardStats;
+      }
+
+      try {
+        employeeUsers = await employeeUsersFuture;
+      } catch (_) {
+        employeeUsers = _employeeUsers;
       }
 
       if (!mounted) {
@@ -263,6 +272,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           ..clear()
           ..addAll(employees);
         _dashboardStats = dashboardStats;
+        _employeeUsers = employeeUsers ?? const [];
         _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
     } on AuthException catch (error) {
@@ -341,6 +351,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
 
     await _refreshDashboardStats();
+    await _refreshEmployeeUsers();
   }
 
   Future<void> _deleteEmployee(Employee employee) async {
@@ -398,6 +409,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
 
     await _refreshDashboardStats();
+    await _refreshEmployeeUsers();
   }
 
   Future<void> _showEmployeeDetails(Employee employee) async {
@@ -492,12 +504,29 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }
   }
 
+  Future<void> _refreshEmployeeUsers() async {
+    try {
+      final employeeUsers = await _repository.fetchEmployeeUsers();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _employeeUsers = employeeUsers;
+      });
+    } catch (_) {
+      // Keep the latest user list if the aggregate endpoint is unavailable.
+    }
+  }
+
   String get _pageTitle {
     switch (_selectedSection) {
       case _HomeSection.dashboard:
         return 'Portal Kepegawaian';
       case _HomeSection.employees:
         return 'Data Pegawai';
+      case _HomeSection.users:
+        return 'List User';
     }
   }
 
@@ -810,6 +839,60 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     );
   }
 
+  Widget _buildUsersSection({
+    required ColorScheme colorScheme,
+    required List<EmployeeUserActivity> employeeUsers,
+  }) {
+    return SingleChildScrollView(
+      key: const ValueKey('users-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'List User',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Daftar user ID yang pernah menggunakan aplikasi ini dan menyimpan data pegawai.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: employeeUsers.isEmpty
+                      ? const _EmptyUserListState()
+                      : Column(
+                          children: employeeUsers
+                              .map(
+                                (user) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: _UserListCard(user: user),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -827,6 +910,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _dashboardStats?.activeEmployees ?? activeEmployees;
     final dashboardInactiveEmployees =
         _dashboardStats?.inactiveEmployees ?? inactiveEmployees;
+    final employeeUsers = _employeeUsers;
     final startItem = filteredEmployees.isEmpty
         ? 0
         : (_currentPage * _pageSize) + 1;
@@ -896,7 +980,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     activeEmployees: dashboardActiveEmployees,
                                     inactiveEmployees: dashboardInactiveEmployees,
                                   )
-                                : _buildEmployeesSection(
+                                : _selectedSection == _HomeSection.employees
+                                ? _buildEmployeesSection(
                                     colorScheme: colorScheme,
                                     isDark: isDark,
                                     isWide: isWide,
@@ -907,6 +992,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     inactiveEmployees: inactiveEmployees,
                                     startItem: startItem,
                                     endItem: endItem,
+                                  )
+                                : _buildUsersSection(
+                                    colorScheme: colorScheme,
+                                    employeeUsers: employeeUsers,
                                   ),
                           ),
                         ),
@@ -1006,6 +1095,13 @@ class _HomeSidebar extends StatelessWidget {
                 selected: selectedSection == _HomeSection.employees,
                 onTap: () => onSelectSection(_HomeSection.employees),
               ),
+              const SizedBox(height: 8),
+              _SidebarItem(
+                icon: Icons.groups_outlined,
+                label: 'List User',
+                selected: selectedSection == _HomeSection.users,
+                onTap: () => onSelectSection(_HomeSection.users),
+              ),
             ],
           ),
         ),
@@ -1062,6 +1158,187 @@ class _SidebarItem extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _UserListCard extends StatelessWidget {
+  const _UserListCard({required this.user});
+
+  final EmployeeUserActivity user;
+
+  String _formatDate(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final twoDigits = (int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.person_pin_circle_outlined,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'User ID',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      user.userId,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _UserListMetaChip(
+                icon: Icons.badge_outlined,
+                label: 'Total Input',
+                value: '${user.totalEmployees} data',
+              ),
+              _UserListMetaChip(
+                icon: Icons.schedule_outlined,
+                label: 'Input Terakhir',
+                value: _formatDate(user.lastInputAt),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserListMetaChip extends StatelessWidget {
+  const _UserListMetaChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: colorScheme.primary),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyUserListState extends StatelessWidget {
+  const _EmptyUserListState();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          Icon(
+            Icons.groups_outlined,
+            size: 48,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Belum ada user yang tercatat',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Daftar user akan muncul setelah ada data pegawai yang tersimpan di database.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
