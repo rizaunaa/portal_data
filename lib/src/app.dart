@@ -2108,30 +2108,42 @@ class _QuickActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = colorScheme.primary;
 
     return Container(
       width: 112,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          child,
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
+      child: IconTheme(
+        data: IconThemeData(color: iconColor, size: 24),
+        child: IconButtonTheme(
+          data: IconButtonThemeData(
+            style: IconButton.styleFrom(
+              foregroundColor: iconColor,
+              iconSize: 24,
             ),
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              child,
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
