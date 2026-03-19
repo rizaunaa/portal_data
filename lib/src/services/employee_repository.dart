@@ -6,6 +6,36 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/employee.dart';
 import '../supabase_bootstrap.dart';
 
+class EmployeeDashboardStats {
+  const EmployeeDashboardStats({
+    required this.totalEmployees,
+    required this.activeEmployees,
+    required this.inactiveEmployees,
+  });
+
+  final int totalEmployees;
+  final int activeEmployees;
+  final int inactiveEmployees;
+
+  factory EmployeeDashboardStats.fromMap(Map<String, dynamic> map) {
+    int parseCount(dynamic value) {
+      if (value is int) {
+        return value;
+      }
+      if (value is num) {
+        return value.toInt();
+      }
+      return int.tryParse('$value') ?? 0;
+    }
+
+    return EmployeeDashboardStats(
+      totalEmployees: parseCount(map['total_employees']),
+      activeEmployees: parseCount(map['active_employees']),
+      inactiveEmployees: parseCount(map['inactive_employees']),
+    );
+  }
+}
+
 class EmployeeRepository {
   const EmployeeRepository();
 
@@ -32,6 +62,14 @@ class EmployeeRepository {
     return (response as List<dynamic>)
         .map((item) => Employee.fromMap(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<EmployeeDashboardStats> fetchDashboardStats() async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient.rpc('employee_dashboard_totals');
+
+    return EmployeeDashboardStats.fromMap(response as Map<String, dynamic>);
   }
 
   Future<Employee> createEmployee(Employee employee) async {

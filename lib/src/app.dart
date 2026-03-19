@@ -217,6 +217,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   String? _errorMessage;
   int _currentPage = 0;
   _HomeSection _selectedSection = _HomeSection.dashboard;
+  EmployeeDashboardStats? _dashboardStats;
 
   @override
   void initState() {
@@ -243,7 +244,17 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
 
     try {
-      final employees = await _repository.fetchEmployees();
+      final employeesFuture = _repository.fetchEmployees();
+      final dashboardStatsFuture = _repository.fetchDashboardStats();
+      final employees = await employeesFuture;
+      EmployeeDashboardStats? dashboardStats;
+
+      try {
+        dashboardStats = await dashboardStatsFuture;
+      } catch (_) {
+        dashboardStats = _dashboardStats;
+      }
+
       if (!mounted) {
         return;
       }
@@ -251,6 +262,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _employees
           ..clear()
           ..addAll(employees);
+        _dashboardStats = dashboardStats;
         _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
     } on AuthException catch (error) {
@@ -327,6 +339,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     setState(() {
       _isSaving = false;
     });
+
+    await _refreshDashboardStats();
   }
 
   Future<void> _deleteEmployee(Employee employee) async {
@@ -382,6 +396,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     setState(() {
       _isSaving = false;
     });
+
+    await _refreshDashboardStats();
   }
 
   Future<void> _showEmployeeDetails(Employee employee) async {
@@ -459,6 +475,21 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     setState(() {
       _selectedSection = section;
     });
+  }
+
+  Future<void> _refreshDashboardStats() async {
+    try {
+      final dashboardStats = await _repository.fetchDashboardStats();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _dashboardStats = dashboardStats;
+      });
+    } catch (_) {
+      // Keep the latest dashboard numbers if the aggregate endpoint is unavailable.
+    }
   }
 
   String get _pageTitle {
@@ -790,6 +821,12 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     final totalEmployees = _employees.length;
     final activeEmployees = _employees.where((item) => item.isActive).length;
     final inactiveEmployees = totalEmployees - activeEmployees;
+    final dashboardTotalEmployees =
+        _dashboardStats?.totalEmployees ?? totalEmployees;
+    final dashboardActiveEmployees =
+        _dashboardStats?.activeEmployees ?? activeEmployees;
+    final dashboardInactiveEmployees =
+        _dashboardStats?.inactiveEmployees ?? inactiveEmployees;
     final startItem = filteredEmployees.isEmpty
         ? 0
         : (_currentPage * _pageSize) + 1;
@@ -855,9 +892,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                             child: _selectedSection == _HomeSection.dashboard
                                 ? _buildDashboardSection(
                                     colorScheme: colorScheme,
-                                    totalEmployees: totalEmployees,
-                                    activeEmployees: activeEmployees,
-                                    inactiveEmployees: inactiveEmployees,
+                                    totalEmployees: dashboardTotalEmployees,
+                                    activeEmployees: dashboardActiveEmployees,
+                                    inactiveEmployees: dashboardInactiveEmployees,
                                   )
                                 : _buildEmployeesSection(
                                     colorScheme: colorScheme,

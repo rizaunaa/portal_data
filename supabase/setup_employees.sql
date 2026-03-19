@@ -83,6 +83,22 @@ create unique index if not exists employees_user_nip_idx
 
 alter table public.employees enable row level security;
 
+create or replace function public.employee_dashboard_totals()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'total_employees', count(*),
+    'active_employees', count(*) filter (where is_active),
+    'inactive_employees', count(*) filter (where not is_active)
+  )
+  from public.employees;
+$$;
+
+grant execute on function public.employee_dashboard_totals() to anon, authenticated;
+
 drop policy if exists "users_can_select_own_employees"
 on public.employees;
 
