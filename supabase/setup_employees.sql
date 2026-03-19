@@ -94,8 +94,115 @@ create table if not exists public.employee_data_access_requests (
 create unique index if not exists employee_data_access_requests_unique_pair_idx
   on public.employee_data_access_requests (requester_user_id, target_user_id);
 
+create table if not exists public.portal_realtime_events (
+  id bigint generated always as identity primary key,
+  topic text not null,
+  action text not null,
+  source_table text not null,
+  actor_user_id uuid,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.employees enable row level security;
 alter table public.employee_data_access_requests enable row level security;
+alter table public.portal_realtime_events enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'employees'
+  ) then
+    alter publication supabase_realtime add table public.employees;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'employee_data_access_requests'
+  ) then
+    alter publication supabase_realtime add table public.employee_data_access_requests;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'portal_realtime_events'
+  ) then
+    alter publication supabase_realtime add table public.portal_realtime_events;
+  end if;
+end;
+$$;
+
+create or replace function public.emit_portal_realtime_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor_id uuid;
+  action_name text;
+begin
+  action_name := tg_op;
+
+  if tg_table_name = 'employees' then
+    actor_id := coalesce(new.user_id, old.user_id);
+  elsif tg_table_name = 'employee_data_access_requests' then
+    actor_id := coalesce(new.requester_user_id, old.requester_user_id);
+  else
+    actor_id := null;
+  end if;
+
+  insert into public.portal_realtime_events (
+    topic,
+    action,
+    source_table,
+    actor_user_id
+  )
+  values (
+    'portal_sync',
+    lower(action_name),
+    tg_table_name,
+    actor_id
+  );
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists employees_emit_portal_realtime_event
+on public.employees;
+
+create trigger employees_emit_portal_realtime_event
+after insert or update or delete on public.employees
+for each row execute function public.emit_portal_realtime_event();
+
+drop trigger if exists employee_access_emit_portal_realtime_event
+on public.employee_data_access_requests;
+
+create trigger employee_access_emit_portal_realtime_event
+after insert or update or delete on public.employee_data_access_requests
+for each row execute function public.emit_portal_realtime_event();
 
 create or replace function public.employee_dashboard_totals()
 returns jsonb
@@ -375,3 +482,12 @@ with check (
   auth.uid() = requester_user_id
   or auth.uid() = target_user_id
 );
+
+drop policy if exists "portal_realtime_events_select_all"
+on public.portal_realtime_events;
+
+create policy "portal_realtime_events_select_all"
+on public.portal_realtime_events
+for select
+to authenticated, anon
+using (true);

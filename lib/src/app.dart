@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -129,6 +131,25 @@ class SupabaseSetupPage extends StatelessWidget {
             pendingCount: 0,
             onOpenNotifications: null,
             onRefresh: null,
+            realtimeStatuses: const {
+              'employees': 'belum tersambung',
+              'requester': 'belum tersambung',
+              'target': 'belum tersambung',
+              'hub': 'belum tersambung',
+            },
+            realtimeEventCounts: const {
+              'employees': 0,
+              'requester': 0,
+              'target': 0,
+              'hub': 0,
+            },
+            realtimeLastPayloads: const {
+              'employees': '-',
+              'requester': '-',
+              'target': '-',
+              'hub': '-',
+            },
+            lastRealtimeEventAt: null,
           ),
         ],
       ),
@@ -219,6 +240,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isRefreshingData = false;
   String _searchQuery = '';
   String? _errorMessage;
   int _currentPage = 0;
@@ -226,6 +248,32 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   EmployeeDashboardStats? _dashboardStats;
   List<EmployeeUserActivity> _employeeUsers = const [];
   List<DataAccessRequestNotification> _incomingRequests = const [];
+  RealtimeChannel? _employeesRealtimeChannel;
+  RealtimeChannel? _accessRequesterRealtimeChannel;
+  RealtimeChannel? _accessTargetRealtimeChannel;
+  RealtimeChannel? _portalEventsRealtimeChannel;
+  Timer? _realtimeRefreshDebounce;
+  bool _pendingRealtimeRefresh = false;
+  String? _subscribedUserId;
+  final Map<String, String> _realtimeStatuses = {
+    'employees': 'belum tersambung',
+    'requester': 'belum tersambung',
+    'target': 'belum tersambung',
+    'hub': 'belum tersambung',
+  };
+  final Map<String, int> _realtimeEventCounts = {
+    'employees': 0,
+    'requester': 0,
+    'target': 0,
+    'hub': 0,
+  };
+  final Map<String, String> _realtimeLastPayloads = {
+    'employees': '-',
+    'requester': '-',
+    'target': '-',
+    'hub': '-',
+  };
+  DateTime? _lastRealtimeEventAt;
 
   @override
   void initState() {
@@ -241,13 +289,21 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
   @override
   void dispose() {
+    _realtimeRefreshDebounce?.cancel();
+    _disposeRealtimeSubscriptions();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadEmployees() async {
+  Future<void> _loadEmployees({bool showPageLoader = true}) async {
+    final shouldShowPageLoader = showPageLoader && _employees.isEmpty;
+
     setState(() {
-      _isLoading = true;
+      if (shouldShowPageLoader) {
+        _isLoading = true;
+      } else {
+        _isRefreshingData = true;
+      }
       _errorMessage = null;
     });
 
@@ -291,12 +347,25 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _incomingRequests = incomingRequests ?? const [];
         _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
+      _setupRealtimeSubscriptionsIfNeeded();
     } on AuthException catch (error) {
-      _errorMessage = error.message;
+      if (mounted) {
+        setState(() {
+          _errorMessage = error.message;
+        });
+      }
     } on PostgrestException catch (error) {
-      _errorMessage = error.message;
+      if (mounted) {
+        setState(() {
+          _errorMessage = error.message;
+        });
+      }
     } catch (error) {
-      _errorMessage = error.toString();
+      if (mounted) {
+        setState(() {
+          _errorMessage = error.toString();
+        });
+      }
     }
 
     if (!mounted) {
@@ -305,7 +374,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
     setState(() {
       _isLoading = false;
+      _isRefreshingData = false;
     });
+
+    if (_pendingRealtimeRefresh) {
+      _pendingRealtimeRefresh = false;
+      _scheduleRealtimeRefresh();
+    }
   }
 
   Future<void> _openEmployeeForm({Employee? employee}) async {
@@ -505,6 +580,256 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     setState(() {
       _selectedSection = section;
     });
+  }
+
+  void _scheduleRealtimeRefresh() {
+    if (mounted) {
+      setState(() {
+        _lastRealtimeEventAt = DateTime.now();
+      });
+    }
+    _realtimeRefreshDebounce?.cancel();
+    _realtimeRefreshDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) {
+        return;
+      }
+      if (_isLoading) {
+        _pendingRealtimeRefresh = true;
+        return;
+      }
+      _pendingRealtimeRefresh = false;
+      _loadEmployees(showPageLoader: false);
+    });
+  }
+
+  void _setupRealtimeSubscriptionsIfNeeded() {
+    final userId = _repository.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    if (_subscribedUserId == userId &&
+        _employeesRealtimeChannel != null &&
+        _accessRequesterRealtimeChannel != null &&
+        _accessTargetRealtimeChannel != null &&
+        _portalEventsRealtimeChannel != null) {
+      return;
+    }
+
+    _disposeRealtimeSubscriptions();
+    _subscribedUserId = userId;
+
+    _employeesRealtimeChannel = supabaseClient
+        .channel('public:employees:all')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'employees',
+          callback: (payload) {
+            _recordRealtimeEvent(
+              key: 'employees',
+              summary:
+                  '${payload.eventType.name} ${payload.table} ${payload.schema}',
+            );
+            _scheduleRealtimeRefresh();
+          },
+        )
+        .onSystemEvents((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _lastRealtimeEventAt = DateTime.now();
+          });
+        })
+        .subscribe((status, error) {
+          _updateRealtimeStatus(
+            key: 'employees',
+            status: _formatRealtimeStatus(status, error),
+          );
+        });
+
+    _accessRequesterRealtimeChannel = supabaseClient
+        .channel('public:employee_data_access_requests:requester:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'employee_data_access_requests',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'requester_user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            _recordRealtimeEvent(
+              key: 'requester',
+              summary:
+                  '${payload.eventType.name} ${payload.table} ${payload.schema}',
+            );
+            _scheduleRealtimeRefresh();
+          },
+        )
+        .onSystemEvents((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _lastRealtimeEventAt = DateTime.now();
+          });
+        })
+        .subscribe((status, error) {
+          _updateRealtimeStatus(
+            key: 'requester',
+            status: _formatRealtimeStatus(status, error),
+          );
+        });
+
+    _accessTargetRealtimeChannel = supabaseClient
+        .channel('public:employee_data_access_requests:target:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'employee_data_access_requests',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'target_user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            _recordRealtimeEvent(
+              key: 'target',
+              summary:
+                  '${payload.eventType.name} ${payload.table} ${payload.schema}',
+            );
+            _scheduleRealtimeRefresh();
+          },
+        )
+        .onSystemEvents((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _lastRealtimeEventAt = DateTime.now();
+          });
+        })
+        .subscribe((status, error) {
+          _updateRealtimeStatus(
+            key: 'target',
+            status: _formatRealtimeStatus(status, error),
+          );
+        });
+
+    _portalEventsRealtimeChannel = supabaseClient
+        .channel('public:portal_realtime_events:hub')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'portal_realtime_events',
+          callback: (payload) {
+            _recordRealtimeEvent(
+              key: 'hub',
+              summary:
+                  '${payload.eventType.name} ${payload.table} ${payload.schema}',
+            );
+            _scheduleRealtimeRefresh();
+          },
+        )
+        .onSystemEvents((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _lastRealtimeEventAt = DateTime.now();
+          });
+        })
+        .subscribe((status, error) {
+          _updateRealtimeStatus(
+            key: 'hub',
+            status: _formatRealtimeStatus(status, error),
+          );
+        });
+  }
+
+  void _updateRealtimeStatus({
+    required String key,
+    required String status,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _realtimeStatuses[key] = status;
+    });
+  }
+
+  void _recordRealtimeEvent({
+    required String key,
+    required String summary,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _lastRealtimeEventAt = DateTime.now();
+      _realtimeEventCounts[key] = (_realtimeEventCounts[key] ?? 0) + 1;
+      _realtimeLastPayloads[key] = summary;
+    });
+  }
+
+  String _formatRealtimeStatus(
+    RealtimeSubscribeStatus status,
+    Object? error,
+  ) {
+    switch (status) {
+      case RealtimeSubscribeStatus.subscribed:
+        return 'subscribed';
+      case RealtimeSubscribeStatus.channelError:
+        return error == null ? 'channel error' : 'error: $error';
+      case RealtimeSubscribeStatus.closed:
+        return 'closed';
+      case RealtimeSubscribeStatus.timedOut:
+        return 'timed out';
+    }
+  }
+
+  void _disposeRealtimeSubscriptions() {
+    final employeesChannel = _employeesRealtimeChannel;
+    final requesterChannel = _accessRequesterRealtimeChannel;
+    final targetChannel = _accessTargetRealtimeChannel;
+    final hubChannel = _portalEventsRealtimeChannel;
+
+    _employeesRealtimeChannel = null;
+    _accessRequesterRealtimeChannel = null;
+    _accessTargetRealtimeChannel = null;
+    _portalEventsRealtimeChannel = null;
+    _subscribedUserId = null;
+    _realtimeStatuses['employees'] = 'belum tersambung';
+    _realtimeStatuses['requester'] = 'belum tersambung';
+    _realtimeStatuses['target'] = 'belum tersambung';
+    _realtimeStatuses['hub'] = 'belum tersambung';
+    _realtimeEventCounts['employees'] = 0;
+    _realtimeEventCounts['requester'] = 0;
+    _realtimeEventCounts['target'] = 0;
+    _realtimeEventCounts['hub'] = 0;
+    _realtimeLastPayloads['employees'] = '-';
+    _realtimeLastPayloads['requester'] = '-';
+    _realtimeLastPayloads['target'] = '-';
+    _realtimeLastPayloads['hub'] = '-';
+    _lastRealtimeEventAt = null;
+
+    if (employeesChannel != null) {
+      supabaseClient.removeChannel(employeesChannel);
+    }
+    if (requesterChannel != null) {
+      supabaseClient.removeChannel(requesterChannel);
+    }
+    if (targetChannel != null) {
+      supabaseClient.removeChannel(targetChannel);
+    }
+    if (hubChannel != null) {
+      supabaseClient.removeChannel(hubChannel);
+    }
   }
 
   Future<void> _refreshDashboardStats() async {
@@ -1153,6 +1478,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                 .length,
             onOpenNotifications: _openIncomingRequestsDialog,
             onRefresh: _isLoading ? null : _loadEmployees,
+            realtimeStatuses: _realtimeStatuses,
+            realtimeEventCounts: _realtimeEventCounts,
+            realtimeLastPayloads: _realtimeLastPayloads,
+            lastRealtimeEventAt: _lastRealtimeEventAt,
           ),
         ],
       ),
@@ -1176,7 +1505,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
+          : _errorMessage != null && _employees.isEmpty
           ? ErrorState(message: _errorMessage!, onRetry: _loadEmployees)
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -1223,7 +1552,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                         ),
                       ],
                     ),
-                    if (_isSaving)
+                    if (_isSaving || _isRefreshingData)
                       const Positioned(
                         left: 0,
                         right: 0,
@@ -1645,11 +1974,30 @@ class AppBarQuickActionsButton extends StatelessWidget {
     required this.pendingCount,
     required this.onOpenNotifications,
     required this.onRefresh,
+    required this.realtimeStatuses,
+    required this.realtimeEventCounts,
+    required this.realtimeLastPayloads,
+    required this.lastRealtimeEventAt,
   });
 
   final int pendingCount;
   final Future<void> Function()? onOpenNotifications;
   final Future<void> Function()? onRefresh;
+  final Map<String, String> realtimeStatuses;
+  final Map<String, int> realtimeEventCounts;
+  final Map<String, String> realtimeLastPayloads;
+  final DateTime? lastRealtimeEventAt;
+
+  String _formatDateTime(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final twoDigits = (int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}:${twoDigits(local.second)}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1663,65 +2011,76 @@ class AppBarQuickActionsButton extends StatelessWidget {
             final colorScheme = Theme.of(sheetContext).colorScheme;
 
             return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Aksi Cepat',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.onSurface,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Aksi Cepat',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Notifikasi, update aplikasi, tema, dan refresh sekarang ada di satu tempat.',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 20),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        if (onOpenNotifications != null)
-                          _QuickActionTile(
-                            child: NotificationBellButton(
-                              pendingCount: pendingCount,
-                              onPressed: () async {
-                                Navigator.of(sheetContext).pop();
-                                await onOpenNotifications!();
-                              },
-                            ),
-                            label: 'Notifikasi',
-                          ),
-                        const _QuickActionTile(
-                          child: UpdateActionButton(),
-                          label: 'Update',
+                      const SizedBox(height: 8),
+                      Text(
+                        'Notifikasi, update aplikasi, tema, dan refresh sekarang ada di satu tempat.',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 16),
+                      if (kDebugMode) ...[
+                        _RealtimeStatusCard(
+                          statuses: realtimeStatuses,
+                          eventCounts: realtimeEventCounts,
+                          lastPayloads: realtimeLastPayloads,
+                          lastEventAt: _formatDateTime(lastRealtimeEventAt),
                         ),
-                        const _QuickActionTile(
-                          child: ThemeModeButton(),
-                          label: 'Tema',
-                        ),
-                        _QuickActionTile(
-                          child: IconButton(
-                            tooltip: 'Refresh',
-                            onPressed: onRefresh == null
-                                ? null
-                                : () async {
-                                    Navigator.of(sheetContext).pop();
-                                    await onRefresh!();
-                                  },
-                            icon: const Icon(Icons.refresh),
-                          ),
-                          label: 'Refresh',
-                        ),
+                        const SizedBox(height: 20),
                       ],
-                    ),
-                  ],
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          if (onOpenNotifications != null)
+                            _QuickActionTile(
+                              child: NotificationBellButton(
+                                pendingCount: pendingCount,
+                                onPressed: () async {
+                                  Navigator.of(sheetContext).pop();
+                                  await onOpenNotifications!();
+                                },
+                              ),
+                              label: 'Notifikasi',
+                            ),
+                          const _QuickActionTile(
+                            child: UpdateActionButton(),
+                            label: 'Update',
+                          ),
+                          const _QuickActionTile(
+                            child: ThemeModeButton(),
+                            label: 'Tema',
+                          ),
+                          _QuickActionTile(
+                            child: IconButton(
+                              tooltip: 'Refresh',
+                              onPressed: onRefresh == null
+                                  ? null
+                                  : () async {
+                                      Navigator.of(sheetContext).pop();
+                                      await onRefresh!();
+                                    },
+                              icon: const Icon(Icons.refresh),
+                            ),
+                            label: 'Refresh',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1770,6 +2129,118 @@ class _QuickActionTile extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w700,
               color: colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RealtimeStatusCard extends StatelessWidget {
+  const _RealtimeStatusCard({
+    required this.statuses,
+    required this.eventCounts,
+    required this.lastPayloads,
+    required this.lastEventAt,
+  });
+
+  final Map<String, String> statuses;
+  final Map<String, int> eventCounts;
+  final Map<String, String> lastPayloads;
+  final String lastEventAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    Widget statusRow(String label, String key) {
+      final value = statuses[key] ?? '-';
+      final isHealthy = value == 'subscribed';
+      final count = eventCounts[key] ?? 0;
+
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isHealthy ? Icons.check_circle_outline : Icons.error_outline,
+            size: 18,
+            color: isHealthy ? Colors.green.shade600 : colorScheme.error,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurface,
+                ),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(text: '$value | event $count'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Status Realtime',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 10),
+          statusRow('Employees', 'employees'),
+          const SizedBox(height: 4),
+          Text(
+            'Payload: ${lastPayloads['employees'] ?? '-'}',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          statusRow('Portal Hub', 'hub'),
+          const SizedBox(height: 4),
+          Text(
+            'Payload: ${lastPayloads['hub'] ?? '-'}',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          statusRow('Access Requester', 'requester'),
+          const SizedBox(height: 4),
+          Text(
+            'Payload: ${lastPayloads['requester'] ?? '-'}',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          statusRow('Access Target', 'target'),
+          const SizedBox(height: 4),
+          Text(
+            'Payload: ${lastPayloads['target'] ?? '-'}',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Event terakhir: $lastEventAt',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],
