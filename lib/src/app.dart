@@ -219,6 +219,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   _HomeSection _selectedSection = _HomeSection.dashboard;
   EmployeeDashboardStats? _dashboardStats;
   List<EmployeeUserActivity> _employeeUsers = const [];
+  List<DataAccessRequestNotification> _incomingRequests = const [];
 
   @override
   void initState() {
@@ -248,9 +249,11 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       final employeesFuture = _repository.fetchEmployees();
       final dashboardStatsFuture = _repository.fetchDashboardStats();
       final employeeUsersFuture = _repository.fetchEmployeeUsers();
+      final incomingRequestsFuture = _repository.fetchIncomingAccessRequests();
       final employees = await employeesFuture;
       EmployeeDashboardStats? dashboardStats;
       List<EmployeeUserActivity>? employeeUsers;
+      List<DataAccessRequestNotification>? incomingRequests;
 
       try {
         dashboardStats = await dashboardStatsFuture;
@@ -264,6 +267,12 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         employeeUsers = _employeeUsers;
       }
 
+      try {
+        incomingRequests = await incomingRequestsFuture;
+      } catch (_) {
+        incomingRequests = _incomingRequests;
+      }
+
       if (!mounted) {
         return;
       }
@@ -273,6 +282,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           ..addAll(employees);
         _dashboardStats = dashboardStats;
         _employeeUsers = employeeUsers ?? const [];
+        _incomingRequests = incomingRequests ?? const [];
         _syncCurrentPage(filteredCount: _filteredEmployees.length);
       });
     } on AuthException catch (error) {
@@ -352,6 +362,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
     await _refreshDashboardStats();
     await _refreshEmployeeUsers();
+    await _refreshIncomingRequests();
   }
 
   Future<void> _deleteEmployee(Employee employee) async {
@@ -410,6 +421,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
     await _refreshDashboardStats();
     await _refreshEmployeeUsers();
+    await _refreshIncomingRequests();
   }
 
   Future<void> _showEmployeeDetails(Employee employee) async {
@@ -517,6 +529,134 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     } catch (_) {
       // Keep the latest user list if the aggregate endpoint is unavailable.
     }
+  }
+
+  Future<void> _refreshIncomingRequests() async {
+    try {
+      final incomingRequests = await _repository.fetchIncomingAccessRequests();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _incomingRequests = incomingRequests;
+      });
+    } catch (_) {
+      // Keep the latest notifications if the endpoint is unavailable.
+    }
+  }
+
+  Future<void> _requestUserData(EmployeeUserActivity user) async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await _repository.requestEmployeeDataAccess(targetUserId: user.userId);
+      await _refreshEmployeeUsers();
+      _showMessage('Permintaan akses data berhasil dikirim ke ${user.userId}.');
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
+  Future<void> _respondToIncomingRequest({
+    required DataAccessRequestNotification request,
+    required bool approve,
+  }) async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await _repository.respondToEmployeeDataAccessRequest(
+        requestId: request.id,
+        approve: approve,
+      );
+      await _refreshIncomingRequests();
+      await _refreshEmployeeUsers();
+      _showMessage(
+        approve
+            ? 'Permintaan akses data disetujui.'
+            : 'Permintaan akses data ditolak.',
+      );
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
+  Future<void> _openSharedEmployees(EmployeeUserActivity user) async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final sharedEmployees = await _repository.fetchSharedEmployees(
+        ownerUserId: user.userId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (context) => SharedEmployeesDialog(
+          ownerUserId: user.userId,
+          employees: sharedEmployees,
+        ),
+      );
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
+  Future<void> _openIncomingRequestsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => IncomingRequestsDialog(
+        requests: _incomingRequests,
+        isBusy: _isSaving,
+        onApprove: (request) async {
+          Navigator.of(context).pop();
+          await _respondToIncomingRequest(request: request, approve: true);
+        },
+        onReject: (request) async {
+          Navigator.of(context).pop();
+          await _respondToIncomingRequest(request: request, approve: false);
+        },
+      ),
+    );
   }
 
   String get _pageTitle {
@@ -879,7 +1019,17 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                               .map(
                                 (user) => Padding(
                                   padding: const EdgeInsets.only(bottom: 14),
-                                  child: _UserListCard(user: user),
+                                  child: _UserListCard(
+                                    user: user,
+                                    isBusy: _isSaving,
+                                    onRequestAccess: user.isCurrentUser
+                                        ? null
+                                        : () => _requestUserData(user),
+                                    onViewData:
+                                        user.canViewData && !user.isCurrentUser
+                                        ? () => _openSharedEmployees(user)
+                                        : null,
+                                  ),
                                 ),
                               )
                               .toList(),
@@ -925,6 +1075,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       appBar: AppBar(
         title: Text(_pageTitle),
         actions: [
+          NotificationBellButton(
+            pendingCount: _incomingRequests.length,
+            onPressed: _openIncomingRequestsDialog,
+          ),
           const UpdateActionButton(),
           const ThemeModeButton(),
           IconButton(
@@ -1164,9 +1318,17 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _UserListCard extends StatelessWidget {
-  const _UserListCard({required this.user});
+  const _UserListCard({
+    required this.user,
+    required this.isBusy,
+    this.onRequestAccess,
+    this.onViewData,
+  });
 
   final EmployeeUserActivity user;
+  final bool isBusy;
+  final VoidCallback? onRequestAccess;
+  final VoidCallback? onViewData;
 
   String _formatDate(DateTime? value) {
     if (value == null) {
@@ -1250,10 +1412,47 @@ class _UserListCard extends StatelessWidget {
                 label: 'Input Terakhir',
                 value: _formatDate(user.lastInputAt),
               ),
+              _buildActionButton(context),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildActionButton(BuildContext context) {
+    if (user.isCurrentUser) {
+      return FilledButton.tonalIcon(
+        onPressed: null,
+        icon: const Icon(Icons.person),
+        label: const Text('Akun Ini'),
+      );
+    }
+
+    if (user.canViewData) {
+      return FilledButton.icon(
+        onPressed: isBusy ? null : onViewData,
+        icon: const Icon(Icons.visibility_outlined),
+        label: const Text('Lihat Data'),
+      );
+    }
+
+    if (user.requestStatus == 'pending') {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.hourglass_top_outlined),
+        label: const Text('Menunggu Persetujuan'),
+      );
+    }
+
+    final label = user.requestStatus == 'rejected'
+        ? 'Request Ulang'
+        : 'Request Data';
+
+    return FilledButton.tonalIcon(
+      onPressed: isBusy ? null : onRequestAccess,
+      icon: const Icon(Icons.send_outlined),
+      label: Text(label),
     );
   }
 }
@@ -1340,6 +1539,201 @@ class _EmptyUserListState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class NotificationBellButton extends StatelessWidget {
+  const NotificationBellButton({
+    super.key,
+    required this.pendingCount,
+    required this.onPressed,
+  });
+
+  final int pendingCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: pendingCount > 0
+          ? '$pendingCount request akses masuk'
+          : 'Tidak ada request masuk',
+      onPressed: onPressed,
+      icon: Badge.count(
+        isLabelVisible: pendingCount > 0,
+        count: pendingCount,
+        child: const Icon(Icons.notifications_none_outlined),
+      ),
+    );
+  }
+}
+
+class IncomingRequestsDialog extends StatelessWidget {
+  const IncomingRequestsDialog({
+    super.key,
+    required this.requests,
+    required this.isBusy,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final List<DataAccessRequestNotification> requests;
+  final bool isBusy;
+  final Future<void> Function(DataAccessRequestNotification request) onApprove;
+  final Future<void> Function(DataAccessRequestNotification request) onReject;
+
+  String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    final twoDigits = (int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: const Text('Request Masuk'),
+      content: SizedBox(
+        width: 620,
+        child: requests.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Belum ada request akses data yang masuk.',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              )
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: requests
+                      .map(
+                        (request) => Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: colorScheme.outlineVariant),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'User ${request.requesterUserId} meminta akses data Anda.',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Masuk: ${_formatDate(request.createdAt)}',
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: isBusy ? null : () => onApprove(request),
+                                    icon: const Icon(Icons.check_circle_outline),
+                                    label: const Text('Accept'),
+                                  ),
+                                  FilledButton.tonalIcon(
+                                    onPressed: isBusy ? null : () => onReject(request),
+                                    icon: const Icon(Icons.close),
+                                    label: const Text('Tolak'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
+    );
+  }
+}
+
+class SharedEmployeesDialog extends StatelessWidget {
+  const SharedEmployeesDialog({
+    super.key,
+    required this.ownerUserId,
+    required this.employees,
+  });
+
+  final String ownerUserId;
+  final List<Employee> employees;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Data Pegawai User'),
+      content: SizedBox(
+        width: 720,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                ownerUserId,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (employees.isEmpty)
+                const Text('Belum ada data yang bisa ditampilkan.')
+              else
+                Column(
+                  children: employees
+                      .map(
+                        (employee) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: EmployeeListCard(
+                            employee: employee,
+                            onViewDetails: () {
+                              showDialog<void>(
+                                context: context,
+                                builder: (context) =>
+                                    EmployeeDetailDialog(employee: employee),
+                              );
+                            },
+                            onEdit: () {},
+                            onDelete: () {},
+                            showActions: false,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
     );
   }
 }
@@ -1704,12 +2098,14 @@ class EmployeeListCard extends StatelessWidget {
     required this.onViewDetails,
     required this.onEdit,
     required this.onDelete,
+    this.showActions = true,
   });
 
   final Employee employee;
   final VoidCallback onViewDetails;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
@@ -1765,26 +2161,28 @@ class EmployeeListCard extends StatelessWidget {
               _InfoRow(label: 'Email', value: employee.email),
               _InfoRow(label: 'Telepon', value: employee.phone),
               _InfoRow(label: 'Alamat', value: employee.address),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onEdit,
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Edit'),
+              if (showActions) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onEdit,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Edit'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Hapus'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Hapus'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

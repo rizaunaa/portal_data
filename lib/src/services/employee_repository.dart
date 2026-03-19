@@ -41,11 +41,17 @@ class EmployeeUserActivity {
     required this.userId,
     required this.totalEmployees,
     this.lastInputAt,
+    this.requestStatus,
+    this.canViewData = false,
+    this.isCurrentUser = false,
   });
 
   final String userId;
   final int totalEmployees;
   final DateTime? lastInputAt;
+  final String? requestStatus;
+  final bool canViewData;
+  final bool isCurrentUser;
 
   factory EmployeeUserActivity.fromMap(Map<String, dynamic> map) {
     int parseCount(dynamic value) {
@@ -66,6 +72,36 @@ class EmployeeUserActivity {
       lastInputAt: lastInputAtValue == null
           ? null
           : DateTime.tryParse(lastInputAtValue as String),
+      requestStatus: map['request_status'] as String?,
+      canViewData: map['can_view_data'] as bool? ?? false,
+      isCurrentUser: map['is_current_user'] as bool? ?? false,
+    );
+  }
+}
+
+class DataAccessRequestNotification {
+  const DataAccessRequestNotification({
+    required this.id,
+    required this.requesterUserId,
+    required this.targetUserId,
+    required this.status,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String requesterUserId;
+  final String targetUserId;
+  final String status;
+  final DateTime createdAt;
+
+  factory DataAccessRequestNotification.fromMap(Map<String, dynamic> map) {
+    return DataAccessRequestNotification(
+      id: map['id'] as String? ?? '',
+      requesterUserId: map['requester_user_id'] as String? ?? '',
+      targetUserId: map['target_user_id'] as String? ?? '',
+      status: map['status'] as String? ?? 'pending',
+      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
 }
@@ -113,6 +149,55 @@ class EmployeeRepository {
 
     return (response as List<dynamic>)
         .map((item) => EmployeeUserActivity.fromMap(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> requestEmployeeDataAccess({required String targetUserId}) async {
+    await ensureSignedIn();
+    await supabaseClient.rpc(
+      'request_employee_data_access',
+      params: {'target_user_id_input': targetUserId},
+    );
+  }
+
+  Future<List<DataAccessRequestNotification>> fetchIncomingAccessRequests() async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient.rpc('incoming_employee_access_requests');
+
+    return (response as List<dynamic>)
+        .map(
+          (item) => DataAccessRequestNotification.fromMap(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> respondToEmployeeDataAccessRequest({
+    required String requestId,
+    required bool approve,
+  }) async {
+    await ensureSignedIn();
+    await supabaseClient.rpc(
+      'respond_employee_data_access_request',
+      params: {
+        'request_id_input': requestId,
+        'approve_input': approve,
+      },
+    );
+  }
+
+  Future<List<Employee>> fetchSharedEmployees({required String ownerUserId}) async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient.rpc(
+      'shared_employee_data',
+      params: {'owner_user_id_input': ownerUserId},
+    );
+
+    return (response as List<dynamic>)
+        .map((item) => Employee.fromMap(item as Map<String, dynamic>))
         .toList();
   }
 
