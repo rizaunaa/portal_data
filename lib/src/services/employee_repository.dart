@@ -86,6 +86,7 @@ class DataAccessRequestNotification {
     required this.targetUserId,
     required this.status,
     required this.createdAt,
+    this.respondedAt,
   });
 
   final String id;
@@ -93,6 +94,7 @@ class DataAccessRequestNotification {
   final String targetUserId;
   final String status;
   final DateTime createdAt;
+  final DateTime? respondedAt;
 
   factory DataAccessRequestNotification.fromMap(Map<String, dynamic> map) {
     return DataAccessRequestNotification(
@@ -102,6 +104,9 @@ class DataAccessRequestNotification {
       status: map['status'] as String? ?? 'pending',
       createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      respondedAt: map['responded_at'] == null
+          ? null
+          : DateTime.tryParse(map['responded_at'] as String),
     );
   }
 }
@@ -195,6 +200,16 @@ class EmployeeRepository {
         'request_id_input': requestId,
         'approve_input': approve,
       },
+    );
+  }
+
+  Future<void> revokeEmployeeDataAccessDecision({
+    required String requestId,
+  }) async {
+    await ensureSignedIn();
+    await supabaseClient.rpc(
+      'revoke_employee_data_access_decision',
+      params: {'request_id_input': requestId},
     );
   }
 

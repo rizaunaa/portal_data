@@ -637,6 +637,37 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
   }
 
+  Future<void> _revokeIncomingRequestDecision(
+    DataAccessRequestNotification request,
+  ) async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await _repository.revokeEmployeeDataAccessDecision(requestId: request.id);
+      await _refreshIncomingRequests();
+      await _refreshEmployeeUsers();
+      _showMessage(
+        request.status == 'approved'
+            ? 'Akses lihat data berhasil dibatalkan.'
+            : 'Status penolakan berhasil dibatalkan.',
+      );
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
   Future<void> _openSharedEmployees(EmployeeUserActivity user) async {
     setState(() {
       _isSaving = true;
@@ -686,6 +717,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         onReject: (request) async {
           Navigator.of(context).pop();
           await _respondToIncomingRequest(request: request, approve: false);
+        },
+        onRevokeDecision: (request) async {
+          Navigator.of(context).pop();
+          await _revokeIncomingRequestDecision(request);
         },
       ),
     );
@@ -1113,7 +1148,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         title: Text(_pageTitle),
         actions: [
           AppBarQuickActionsButton(
-            pendingCount: _incomingRequests.length,
+            pendingCount: _incomingRequests
+                .where((item) => item.status == 'pending')
+                .length,
             onOpenNotifications: _openIncomingRequestsDialog,
             onRefresh: _isLoading ? null : _loadEmployees,
           ),
@@ -1748,12 +1785,163 @@ class IncomingRequestsDialog extends StatelessWidget {
     required this.isBusy,
     required this.onApprove,
     required this.onReject,
+    required this.onRevokeDecision,
   });
 
   final List<DataAccessRequestNotification> requests;
   final bool isBusy;
   final Future<void> Function(DataAccessRequestNotification request) onApprove;
   final Future<void> Function(DataAccessRequestNotification request) onReject;
+  final Future<void> Function(DataAccessRequestNotification request)
+      onRevokeDecision;
+
+  String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    final twoDigits = (int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final pendingRequests = requests.where((item) => item.status == 'pending');
+    final approvedRequests = requests
+        .where((item) => item.status == 'approved');
+    final rejectedRequests = requests
+        .where((item) => item.status == 'rejected');
+
+    return AlertDialog(
+      title: const Text('Request Masuk'),
+      content: SizedBox(
+        width: 620,
+        child: requests.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Belum ada request atau akses data yang tercatat.',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              )
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (pendingRequests.isNotEmpty) ...[
+                      const _RequestSectionTitle(
+                        title: 'Request Menunggu',
+                        subtitle:
+                            'User yang sedang menunggu keputusan accept atau tolak.',
+                      ),
+                      const SizedBox(height: 10),
+                      ...pendingRequests.map(
+                        (request) => _IncomingRequestCard(
+                          request: request,
+                          isBusy: isBusy,
+                          onApprove: () => onApprove(request),
+                          onReject: () => onReject(request),
+                        ),
+                      ),
+                    ],
+                    if (approvedRequests.isNotEmpty) ...[
+                      if (pendingRequests.isNotEmpty) const SizedBox(height: 10),
+                      const _RequestSectionTitle(
+                        title: 'Sudah Diberi Akses',
+                        subtitle:
+                            'Daftar user yang saat ini boleh melihat data Anda.',
+                      ),
+                      const SizedBox(height: 10),
+                      ...approvedRequests.map(
+                        (request) => _ManagedAccessCard(
+                          request: request,
+                          isBusy: isBusy,
+                          buttonLabel: 'Batalkan Akses',
+                          onPressed: () => onRevokeDecision(request),
+                        ),
+                      ),
+                    ],
+                    if (rejectedRequests.isNotEmpty) ...[
+                      if (pendingRequests.isNotEmpty || approvedRequests.isNotEmpty)
+                        const SizedBox(height: 10),
+                      const _RequestSectionTitle(
+                        title: 'Request Ditolak',
+                        subtitle:
+                            'Riwayat penolakan yang masih tersimpan dan bisa dibatalkan.',
+                      ),
+                      const SizedBox(height: 10),
+                      ...rejectedRequests.map(
+                        (request) => _ManagedAccessCard(
+                          request: request,
+                          isBusy: isBusy,
+                          buttonLabel: 'Batalkan Penolakan',
+                          onPressed: () => onRevokeDecision(request),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
+    );
+  }
+}
+
+class _RequestSectionTitle extends StatelessWidget {
+  const _RequestSectionTitle({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 13,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IncomingRequestCard extends StatelessWidget {
+  const _IncomingRequestCard({
+    required this.request,
+    required this.isBusy,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final DataAccessRequestNotification request;
+  final bool isBusy;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
 
   String _formatDate(DateTime value) {
     final local = value.toLocal();
@@ -1766,78 +1954,119 @@ class IncomingRequestsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return AlertDialog(
-      title: const Text('Request Masuk'),
-      content: SizedBox(
-        width: 620,
-        child: requests.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'User ${request.requesterUserId} meminta akses data Anda.',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Masuk: ${_formatDate(request.createdAt)}',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton.icon(
+                onPressed: isBusy ? null : onApprove,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Accept'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: isBusy ? null : onReject,
+                icon: const Icon(Icons.close),
+                label: const Text('Tolak'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManagedAccessCard extends StatelessWidget {
+  const _ManagedAccessCard({
+    required this.request,
+    required this.isBusy,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final DataAccessRequestNotification request;
+  final bool isBusy;
+  final String buttonLabel;
+  final VoidCallback onPressed;
+
+  String _formatDate(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final twoDigits = (int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isApproved = request.status == 'approved';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
                 child: Text(
-                  'Belum ada request akses data yang masuk.',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-              )
-            : SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: requests
-                      .map(
-                        (request) => Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: colorScheme.outlineVariant),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'User ${request.requesterUserId} meminta akses data Anda.',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Masuk: ${_formatDate(request.createdAt)}',
-                                style: TextStyle(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  FilledButton.icon(
-                                    onPressed: isBusy ? null : () => onApprove(request),
-                                    icon: const Icon(Icons.check_circle_outline),
-                                    label: const Text('Accept'),
-                                  ),
-                                  FilledButton.tonalIcon(
-                                    onPressed: isBusy ? null : () => onReject(request),
-                                    icon: const Icon(Icons.close),
-                                    label: const Text('Tolak'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
+                  request.requesterUserId,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
+              StatusChip(
+                isActive: isApproved,
+                activeLabel: 'Diizinkan',
+                inactiveLabel: 'Ditolak',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Diproses: ${_formatDate(request.respondedAt)}',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: isBusy ? null : onPressed,
+            icon: Icon(
+              isApproved ? Icons.block_outlined : Icons.restore_outlined,
+            ),
+            label: Text(buttonLabel),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Tutup'),
-        ),
-      ],
     );
   }
 }
@@ -2624,15 +2853,22 @@ class EmployeeAvatar extends StatelessWidget {
 }
 
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.isActive});
+  const StatusChip({
+    super.key,
+    required this.isActive,
+    this.activeLabel = 'Aktif',
+    this.inactiveLabel = 'Nonaktif',
+  });
 
   final bool isActive;
+  final String activeLabel;
+  final String inactiveLabel;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Chip(
-      label: Text(isActive ? 'Aktif' : 'Nonaktif'),
+      label: Text(isActive ? activeLabel : inactiveLabel),
       labelStyle: TextStyle(
         color: isActive
             ? (isDark ? const Color(0xFFBBF7D0) : const Color(0xFF166534))

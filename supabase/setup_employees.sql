@@ -242,15 +242,15 @@ as $$
         'requester_user_id', requester_user_id::text,
         'target_user_id', target_user_id::text,
         'status', status,
-        'created_at', created_at
+        'created_at', created_at,
+        'responded_at', responded_at
       )
-      order by created_at desc
+      order by coalesce(responded_at, created_at) desc, created_at desc
     ),
     '[]'::jsonb
   )
   from public.employee_data_access_requests
-  where target_user_id = auth.uid()
-    and status = 'pending';
+  where target_user_id = auth.uid();
 $$;
 
 grant execute on function public.incoming_employee_access_requests() to anon, authenticated;
@@ -280,6 +280,28 @@ end;
 $$;
 
 grant execute on function public.respond_employee_data_access_request(uuid, boolean) to anon, authenticated;
+
+create or replace function public.revoke_employee_data_access_decision(
+  request_id_input uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.employee_data_access_requests
+  where id = request_id_input
+    and target_user_id = auth.uid()
+    and status in ('approved', 'rejected');
+
+  if not found then
+    raise exception 'Keputusan akses tidak ditemukan atau tidak bisa dibatalkan.';
+  end if;
+end;
+$$;
+
+grant execute on function public.revoke_employee_data_access_decision(uuid) to anon, authenticated;
 
 create or replace function public.shared_employee_data(owner_user_id_input text)
 returns setof public.employees
