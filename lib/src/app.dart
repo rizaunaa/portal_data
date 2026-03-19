@@ -196,6 +196,8 @@ class _CommandBlock extends StatelessWidget {
   }
 }
 
+enum _HomeSection { dashboard, employees }
+
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
 
@@ -214,6 +216,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   String _searchQuery = '';
   String? _errorMessage;
   int _currentPage = 0;
+  _HomeSection _selectedSection = _HomeSection.dashboard;
 
   @override
   void initState() {
@@ -452,11 +455,336 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }
   }
 
+  void _selectSection(_HomeSection section) {
+    setState(() {
+      _selectedSection = section;
+    });
+  }
+
+  String get _pageTitle {
+    switch (_selectedSection) {
+      case _HomeSection.dashboard:
+        return 'Portal Kepegawaian';
+      case _HomeSection.employees:
+        return 'Data Pegawai';
+    }
+  }
+
+  Widget _buildDashboardSection({
+    required ColorScheme colorScheme,
+    required int totalEmployees,
+    required int activeEmployees,
+    required int inactiveEmployees,
+  }) {
+    return SingleChildScrollView(
+      key: const ValueKey('dashboard-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dashboard',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ringkasan portal kepegawaian. Buka Data Pegawai dari menu kiri untuk melihat, mencari, dan mengubah data.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SummaryCard(
+                    title: 'Total Pegawai',
+                    value: '$totalEmployees',
+                    icon: Icons.groups_2_outlined,
+                    color: const Color(0xFF0F766E),
+                  ),
+                  SummaryCard(
+                    title: 'Pegawai Aktif',
+                    value: '$activeEmployees',
+                    icon: Icons.verified_user_outlined,
+                    color: const Color(0xFF2563EB),
+                  ),
+                  SummaryCard(
+                    title: 'Nonaktif',
+                    value: '$inactiveEmployees',
+                    icon: Icons.person_off_outlined,
+                    color: const Color(0xFFB45309),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    runSpacing: 16,
+                    spacing: 16,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 680),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Data pegawai sudah dipindahkan',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Semua tabel, pencarian, detail, tambah, edit, dan hapus data sekarang ada di menu kiri bagian Data Pegawai supaya halaman utama lebih rapi dan nanti mudah ditambah menu lain.',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => _selectSection(_HomeSection.employees),
+                        icon: const Icon(Icons.badge_outlined),
+                        label: const Text('Buka Data Pegawai'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmployeesSection({
+    required ColorScheme colorScheme,
+    required bool isDark,
+    required bool isWide,
+    required List<Employee> filteredEmployees,
+    required List<Employee> employees,
+    required int totalEmployees,
+    required int activeEmployees,
+    required int inactiveEmployees,
+    required int startItem,
+    required int endItem,
+  }) {
+    return SingleChildScrollView(
+      key: const ValueKey('employees-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SummaryCard(
+                    title: 'Total Pegawai',
+                    value: '$totalEmployees',
+                    icon: Icons.groups_2_outlined,
+                    color: const Color(0xFF0F766E),
+                  ),
+                  SummaryCard(
+                    title: 'Pegawai Aktif',
+                    value: '$activeEmployees',
+                    icon: Icons.verified_user_outlined,
+                    color: const Color(0xFF2563EB),
+                  ),
+                  SummaryCard(
+                    title: 'Nonaktif',
+                    value: '$inactiveEmployees',
+                    icon: Icons.person_off_outlined,
+                    color: const Color(0xFFB45309),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF111827) : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark
+                        ? colorScheme.outline
+                        : const Color(0xFFE5E7EB),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark
+                          ? const Color(0x33000000)
+                          : const Color(0x12000000),
+                      blurRadius: isDark ? 18 : 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        runSpacing: 12,
+                        spacing: 12,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Data Pegawai',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Semua perubahan sekarang tersimpan di Supabase.',
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(
+                            width: isWide ? 320 : double.infinity,
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: 'Cari nama, NIP, jabatan, unit...',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                suffixIcon: Visibility(
+                                  visible: _searchQuery.isNotEmpty,
+                                  maintainAnimation: true,
+                                  maintainSize: true,
+                                  maintainState: true,
+                                  child: IconButton(
+                                    onPressed: _searchController.clear,
+                                    icon: const Icon(Icons.close),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: isWide ? 280 : 220,
+                        ),
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: filteredEmployees.isEmpty
+                              ? const EmptyEmployeeState()
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (isWide)
+                                      EmployeeDataTable(
+                                        employees: employees,
+                                        onViewDetails: _showEmployeeDetails,
+                                        onEdit: _openEmployeeForm,
+                                        onDelete: _deleteEmployee,
+                                      )
+                                    else
+                                      Column(
+                                        children: employees
+                                            .map(
+                                              (employee) => Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 12,
+                                                ),
+                                                child: EmployeeListCard(
+                                                  employee: employee,
+                                                  onViewDetails: () =>
+                                                      _showEmployeeDetails(
+                                                        employee,
+                                                      ),
+                                                  onEdit: () =>
+                                                      _openEmployeeForm(
+                                                        employee: employee,
+                                                      ),
+                                                  onDelete: () =>
+                                                      _deleteEmployee(employee),
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                      ),
+                                    const SizedBox(height: 16),
+                                    PaginationFooter(
+                                      currentPage: _currentPage,
+                                      totalPages: _totalPages,
+                                      startItem: startItem,
+                                      endItem: endItem,
+                                      totalItems: filteredEmployees.length,
+                                      onPrevious: _currentPage == 0
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _currentPage--;
+                                              });
+                                            },
+                                      onNext: _currentPage >= _totalPages - 1
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _currentPage++;
+                                              });
+                                            },
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final isDesktopLayout = MediaQuery.sizeOf(context).width >= 900;
     final filteredEmployees = _filteredEmployees;
     final employees = _paginatedEmployees;
     final totalEmployees = _employees.length;
@@ -474,7 +802,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Portal Kepegawaian'),
+        title: Text(_pageTitle),
         actions: [
           const UpdateActionButton(),
           const ThemeModeButton(),
@@ -485,11 +813,24 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isSaving ? null : () => _openEmployeeForm(),
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Tambah Pegawai'),
-      ),
+      drawer: isDesktopLayout
+          ? null
+          : Drawer(
+              child: _HomeSidebar(
+                selectedSection: _selectedSection,
+                onSelectSection: (section) {
+                  Navigator.of(context).pop();
+                  _selectSection(section);
+                },
+              ),
+            ),
+      floatingActionButton: _selectedSection == _HomeSection.employees
+          ? FloatingActionButton.extended(
+              onPressed: _isSaving ? null : () => _openEmployeeForm(),
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Tambah Pegawai'),
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
@@ -500,226 +841,39 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
                 return Stack(
                   children: [
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1180),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 16,
-                                children: [
-                                  SummaryCard(
-                                    title: 'Total Pegawai',
-                                    value: '$totalEmployees',
-                                    icon: Icons.groups_2_outlined,
-                                    color: const Color(0xFF0F766E),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isWide)
+                          _HomeSidebar(
+                            selectedSection: _selectedSection,
+                            onSelectSection: _selectSection,
+                          ),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: _selectedSection == _HomeSection.dashboard
+                                ? _buildDashboardSection(
+                                    colorScheme: colorScheme,
+                                    totalEmployees: totalEmployees,
+                                    activeEmployees: activeEmployees,
+                                    inactiveEmployees: inactiveEmployees,
+                                  )
+                                : _buildEmployeesSection(
+                                    colorScheme: colorScheme,
+                                    isDark: isDark,
+                                    isWide: isWide,
+                                    filteredEmployees: filteredEmployees,
+                                    employees: employees,
+                                    totalEmployees: totalEmployees,
+                                    activeEmployees: activeEmployees,
+                                    inactiveEmployees: inactiveEmployees,
+                                    startItem: startItem,
+                                    endItem: endItem,
                                   ),
-                                  SummaryCard(
-                                    title: 'Pegawai Aktif',
-                                    value: '$activeEmployees',
-                                    icon: Icons.verified_user_outlined,
-                                    color: const Color(0xFF2563EB),
-                                  ),
-                                  SummaryCard(
-                                    title: 'Nonaktif',
-                                    value: '$inactiveEmployees',
-                                    icon: Icons.person_off_outlined,
-                                    color: const Color(0xFFB45309),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF111827)
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: isDark
-                                        ? colorScheme.outline
-                                        : const Color(0xFFE5E7EB),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: isDark
-                                          ? const Color(0x33000000)
-                                          : const Color(0x12000000),
-                                      blurRadius: isDark ? 18 : 24,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ],
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Wrap(
-                                        alignment: WrapAlignment.spaceBetween,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        runSpacing: 12,
-                                        spacing: 12,
-                                        children: [
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Data Pegawai',
-                                                style: TextStyle(
-                                                  fontSize: 22,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: colorScheme.onSurface,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'Semua perubahan sekarang tersimpan di Supabase.',
-                                                style: TextStyle(
-                                                  color: colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          SizedBox(
-                                            width: isWide
-                                                ? 320
-                                                : double.infinity,
-                                            child: TextField(
-                                              controller: _searchController,
-                                              decoration: InputDecoration(
-                                                hintText:
-                                                    'Cari nama, NIP, jabatan, unit...',
-                                                prefixIcon: const Icon(
-                                                  Icons.search,
-                                                ),
-                                                suffixIconConstraints:
-                                                    const BoxConstraints(
-                                                      minWidth: 48,
-                                                      minHeight: 48,
-                                                    ),
-                                                suffixIcon: Visibility(
-                                                  visible:
-                                                      _searchQuery.isNotEmpty,
-                                                  maintainAnimation: true,
-                                                  maintainSize: true,
-                                                  maintainState: true,
-                                                  child: IconButton(
-                                                    onPressed:
-                                                        _searchController.clear,
-                                                    icon: const Icon(
-                                                      Icons.close,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 20),
-                                      ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                          minHeight: isWide ? 280 : 220,
-                                        ),
-                                        child: Align(
-                                          alignment: Alignment.topLeft,
-                                          child: filteredEmployees.isEmpty
-                                              ? const EmptyEmployeeState()
-                                              : Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    if (isWide)
-                                                      EmployeeDataTable(
-                                                        employees: employees,
-                                                        onViewDetails:
-                                                            _showEmployeeDetails,
-                                                        onEdit:
-                                                            _openEmployeeForm,
-                                                        onDelete:
-                                                            _deleteEmployee,
-                                                      )
-                                                    else
-                                                      Column(
-                                                        children: employees
-                                                            .map(
-                                                              (
-                                                                employee,
-                                                              ) => Padding(
-                                                                padding:
-                                                                    const EdgeInsets.only(
-                                                                      bottom:
-                                                                          12,
-                                                                    ),
-                                                                child: EmployeeListCard(
-                                                                  employee:
-                                                                      employee,
-                                                                  onViewDetails: () =>
-                                                                      _showEmployeeDetails(
-                                                                        employee,
-                                                                      ),
-                                                                  onEdit: () =>
-                                                                      _openEmployeeForm(
-                                                                        employee:
-                                                                            employee,
-                                                                      ),
-                                                                  onDelete: () =>
-                                                                      _deleteEmployee(
-                                                                        employee,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            )
-                                                            .toList(),
-                                                      ),
-                                                    const SizedBox(height: 16),
-                                                    PaginationFooter(
-                                                      currentPage: _currentPage,
-                                                      totalPages: _totalPages,
-                                                      startItem: startItem,
-                                                      endItem: endItem,
-                                                      totalItems:
-                                                          filteredEmployees
-                                                              .length,
-                                                      onPrevious:
-                                                          _currentPage == 0
-                                                          ? null
-                                                          : () {
-                                                              setState(() {
-                                                                _currentPage--;
-                                                              });
-                                                            },
-                                                      onNext:
-                                                          _currentPage >=
-                                                              _totalPages - 1
-                                                          ? null
-                                                          : () {
-                                                              setState(() {
-                                                                _currentPage++;
-                                                              });
-                                                            },
-                                                    ),
-                                                  ],
-                                                ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                      ),
+                      ],
                     ),
                     if (_isSaving)
                       const Positioned(
@@ -732,6 +886,146 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                 );
               },
             ),
+    );
+  }
+}
+
+class _HomeSidebar extends StatelessWidget {
+  const _HomeSidebar({
+    required this.selectedSection,
+    required this.onSelectSection,
+  });
+
+  final _HomeSection selectedSection;
+  final ValueChanged<_HomeSection> onSelectSection;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 260,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          right: BorderSide(color: colorScheme.outlineVariant),
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.apartment_outlined,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Portal Data',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          'Menu utama',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              _SidebarItem(
+                icon: Icons.dashboard_outlined,
+                label: 'Dashboard',
+                selected: selectedSection == _HomeSection.dashboard,
+                onTap: () => onSelectSection(_HomeSection.dashboard),
+              ),
+              const SizedBox(height: 8),
+              _SidebarItem(
+                icon: Icons.badge_outlined,
+                label: 'Data Pegawai',
+                selected: selectedSection == _HomeSection.employees,
+                onTap: () => onSelectSection(_HomeSection.employees),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatelessWidget {
+  const _SidebarItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: selected ? colorScheme.primaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: selected
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: selected
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
