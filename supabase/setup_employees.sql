@@ -81,6 +81,48 @@ using (
 create unique index if not exists employees_user_nip_idx
   on public.employees (user_id, nip);
 
+create or replace function public.validate_employee_uniqueness()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from public.employees employees
+    where employees.user_id = new.user_id
+      and employees.id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
+      and btrim(employees.nip) = btrim(new.nip)
+  ) then
+    raise exception 'NIP sudah terdaftar. Gunakan NIP yang berbeda.';
+  end if;
+
+  if exists (
+    select 1
+    from public.employees employees
+    where employees.user_id = new.user_id
+      and employees.id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
+      and lower(btrim(employees.email)) = lower(btrim(new.email))
+  ) then
+    raise exception 'Email sudah terdaftar. Gunakan email yang berbeda.';
+  end if;
+
+  if btrim(coalesce(new.phone, '')) <> ''
+    and exists (
+      select 1
+      from public.employees employees
+      where employees.user_id = new.user_id
+        and employees.id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
+        and btrim(coalesce(employees.phone, '')) = btrim(new.phone)
+    ) then
+    raise exception 'Nomor HP sudah terdaftar. Gunakan nomor HP yang berbeda.';
+  end if;
+
+  return new;
+end;
+$$;
+
 create table if not exists public.employee_data_access_requests (
   id uuid primary key default gen_random_uuid(),
   requester_user_id uuid not null references auth.users (id) on delete cascade,
@@ -196,6 +238,13 @@ on public.employees;
 create trigger employees_emit_portal_realtime_event
 after insert or update or delete on public.employees
 for each row execute function public.emit_portal_realtime_event();
+
+drop trigger if exists employees_validate_uniqueness
+on public.employees;
+
+create trigger employees_validate_uniqueness
+before insert or update on public.employees
+for each row execute function public.validate_employee_uniqueness();
 
 drop trigger if exists employee_access_emit_portal_realtime_event
 on public.employee_data_access_requests;
