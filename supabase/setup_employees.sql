@@ -16,7 +16,28 @@ create table if not exists public.employees (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.inventory_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  photo_url text not null default '',
+  item_name text not null,
+  item_code text not null,
+  category text not null default '',
+  brand text not null default '',
+  quantity integer not null default 0 check (quantity >= 0),
+  unit text not null default 'unit',
+  item_condition text not null default 'baik',
+  location text not null default '',
+  notes text not null default '',
+  is_active boolean not null default true,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.employees
+  add column if not exists photo_url text not null default '';
+
+alter table public.inventory_items
   add column if not exists photo_url text not null default '';
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -80,6 +101,9 @@ using (
 
 create unique index if not exists employees_user_nip_idx
   on public.employees (user_id, nip);
+
+create unique index if not exists inventory_items_user_code_idx
+  on public.inventory_items (user_id, item_code);
 
 create or replace function public.validate_employee_uniqueness()
 returns trigger
@@ -146,6 +170,7 @@ create table if not exists public.portal_realtime_events (
 );
 
 alter table public.employees enable row level security;
+alter table public.inventory_items enable row level security;
 alter table public.employee_data_access_requests enable row level security;
 alter table public.portal_realtime_events enable row level security;
 
@@ -159,6 +184,20 @@ begin
       and tablename = 'employees'
   ) then
     alter publication supabase_realtime add table public.employees;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'inventory_items'
+  ) then
+    alter publication supabase_realtime add table public.inventory_items;
   end if;
 end;
 $$;
@@ -205,6 +244,8 @@ begin
 
   if tg_table_name = 'employees' then
     actor_id := coalesce(new.user_id, old.user_id);
+  elsif tg_table_name = 'inventory_items' then
+    actor_id := coalesce(new.user_id, old.user_id);
   elsif tg_table_name = 'employee_data_access_requests' then
     actor_id := coalesce(new.requester_user_id, old.requester_user_id);
   else
@@ -237,6 +278,13 @@ on public.employees;
 
 create trigger employees_emit_portal_realtime_event
 after insert or update or delete on public.employees
+for each row execute function public.emit_portal_realtime_event();
+
+drop trigger if exists inventory_items_emit_portal_realtime_event
+on public.inventory_items;
+
+create trigger inventory_items_emit_portal_realtime_event
+after insert or update or delete on public.inventory_items
 for each row execute function public.emit_portal_realtime_event();
 
 drop trigger if exists employees_validate_uniqueness
@@ -488,11 +536,29 @@ for select
 to authenticated, anon
 using (auth.uid() = user_id);
 
+drop policy if exists "users_can_select_own_inventory_items"
+on public.inventory_items;
+
+create policy "users_can_select_own_inventory_items"
+on public.inventory_items
+for select
+to authenticated, anon
+using (auth.uid() = user_id);
+
 drop policy if exists "users_can_insert_own_employees"
 on public.employees;
 
 create policy "users_can_insert_own_employees"
 on public.employees
+for insert
+to authenticated, anon
+with check (auth.uid() = user_id);
+
+drop policy if exists "users_can_insert_own_inventory_items"
+on public.inventory_items;
+
+create policy "users_can_insert_own_inventory_items"
+on public.inventory_items
 for insert
 to authenticated, anon
 with check (auth.uid() = user_id);
@@ -507,11 +573,30 @@ to authenticated, anon
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
+drop policy if exists "users_can_update_own_inventory_items"
+on public.inventory_items;
+
+create policy "users_can_update_own_inventory_items"
+on public.inventory_items
+for update
+to authenticated, anon
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
 drop policy if exists "users_can_delete_own_employees"
 on public.employees;
 
 create policy "users_can_delete_own_employees"
 on public.employees
+for delete
+to authenticated, anon
+using (auth.uid() = user_id);
+
+drop policy if exists "users_can_delete_own_inventory_items"
+on public.inventory_items;
+
+create policy "users_can_delete_own_inventory_items"
+on public.inventory_items
 for delete
 to authenticated, anon
 using (auth.uid() = user_id);

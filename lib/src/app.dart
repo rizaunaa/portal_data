@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/employee.dart';
+import 'models/inventory_item.dart';
 import 'services/employee_repository.dart';
 import 'supabase_bootstrap.dart';
 import 'update/app_update_widgets.dart';
@@ -223,7 +224,7 @@ class _CommandBlock extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, employees, users }
+enum _HomeSection { dashboard, employees, items, users }
 
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
@@ -235,13 +236,16 @@ class EmployeeHomePage extends StatefulWidget {
 class _EmployeeHomePageState extends State<EmployeeHomePage> {
   final EmployeeRepository _repository = const EmployeeRepository();
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _itemSearchController = TextEditingController();
   final List<Employee> _employees = [];
+  final List<InventoryItem> _inventoryItems = [];
   static const int _pageSize = 10;
 
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isRefreshingData = false;
   String _searchQuery = '';
+  String _itemSearchQuery = '';
   String? _errorMessage;
   int _currentPage = 0;
   _HomeSection _selectedSection = _HomeSection.dashboard;
@@ -284,6 +288,12 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _currentPage = 0;
       });
     });
+    _itemSearchController.addListener(() {
+      setState(() {
+        _itemSearchQuery = _itemSearchController.text.trim().toLowerCase();
+        _currentPage = 0;
+      });
+    });
     _loadEmployees();
   }
 
@@ -292,6 +302,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     _realtimeRefreshDebounce?.cancel();
     _disposeRealtimeSubscriptions();
     _searchController.dispose();
+    _itemSearchController.dispose();
     super.dispose();
   }
 
@@ -309,10 +320,12 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
     try {
       final employeesFuture = _repository.fetchEmployees();
+      final inventoryItemsFuture = _repository.fetchInventoryItems();
       final dashboardStatsFuture = _repository.fetchDashboardStats();
       final employeeUsersFuture = _repository.fetchEmployeeUsers();
       final incomingRequestsFuture = _repository.fetchIncomingAccessRequests();
       final employees = await employeesFuture;
+      final inventoryItems = await inventoryItemsFuture;
       EmployeeDashboardStats? dashboardStats;
       List<EmployeeUserActivity>? employeeUsers;
       List<DataAccessRequestNotification>? incomingRequests;
@@ -342,10 +355,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _employees
           ..clear()
           ..addAll(employees);
+        _inventoryItems
+          ..clear()
+          ..addAll(inventoryItems);
         _dashboardStats = dashboardStats;
         _employeeUsers = employeeUsers ?? const [];
         _incomingRequests = incomingRequests ?? const [];
-        _syncCurrentPage(filteredCount: _filteredEmployees.length);
+        _syncCurrentPage(filteredCount: _activeFilteredCount);
       });
       _setupRealtimeSubscriptionsIfNeeded();
     } on AuthException catch (error) {
@@ -419,7 +435,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         } else {
           _employees.insert(0, savedEmployee);
         }
-        _syncCurrentPage(filteredCount: _filteredEmployees.length);
+        _syncCurrentPage(filteredCount: _activeFilteredCount);
       });
 
       _showMessage(
@@ -483,7 +499,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       }
       setState(() {
         _employees.removeWhere((item) => item.id == employee.id);
-        _syncCurrentPage(filteredCount: _filteredEmployees.length);
+        _syncCurrentPage(filteredCount: _activeFilteredCount);
       });
       _showMessage('${employee.name} berhasil dihapus.');
     } on PostgrestException catch (error) {
@@ -509,6 +525,128 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     await showDialog<void>(
       context: context,
       builder: (context) => EmployeeDetailDialog(employee: employee),
+    );
+  }
+
+  Future<void> _openInventoryItemForm({InventoryItem? item}) async {
+    final result = await showDialog<InventoryItem>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => InventoryItemFormDialog(
+        item: item,
+        userId: _repository.currentUser?.id ?? '',
+      ),
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final savedItem = item == null
+          ? await _repository.createInventoryItem(result)
+          : await _repository.updateInventoryItem(result);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        final index = _inventoryItems.indexWhere(
+          (existing) => existing.id == savedItem.id,
+        );
+        if (index >= 0) {
+          _inventoryItems[index] = savedItem;
+        } else {
+          _inventoryItems.insert(0, savedItem);
+        }
+        _syncCurrentPage(filteredCount: _activeFilteredCount);
+      });
+
+      _showMessage(
+        item == null
+            ? 'Barang berhasil ditambahkan.'
+            : 'Data barang berhasil diperbarui.',
+      );
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
+  Future<void> _deleteInventoryItem(InventoryItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus data barang'),
+        content: Text(
+          'Yakin ingin menghapus barang ${item.itemName}? Tindakan ini tidak bisa dibatalkan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await _repository.deleteInventoryItem(item.id);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _inventoryItems.removeWhere((existing) => existing.id == item.id);
+        _syncCurrentPage(filteredCount: _activeFilteredCount);
+      });
+      _showMessage('${item.itemName} berhasil dihapus.');
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
+  Future<void> _showInventoryItemDetails(InventoryItem item) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => InventoryItemDetailDialog(item: item),
     );
   }
 
@@ -543,8 +681,42 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }).toList();
   }
 
+  List<InventoryItem> get _filteredInventoryItems {
+    if (_itemSearchQuery.isEmpty) {
+      return _inventoryItems;
+    }
+
+    return _inventoryItems.where((item) {
+      final source = [
+        item.itemName,
+        item.itemCode,
+        item.category,
+        item.brand,
+        item.location,
+        item.itemCondition,
+      ].join(' ').toLowerCase();
+
+      return source.contains(_itemSearchQuery);
+    }).toList();
+  }
+
+  int get _activeFilteredCount {
+    switch (_selectedSection) {
+      case _HomeSection.dashboard:
+        return _filteredEmployees.length;
+      case _HomeSection.employees:
+        return _filteredEmployees.length;
+      case _HomeSection.items:
+        return _filteredInventoryItems.length;
+      case _HomeSection.users:
+        return _employeeUsers.length;
+    }
+  }
+
   int get _totalPages {
-    final totalItems = _filteredEmployees.length;
+    final totalItems = _selectedSection == _HomeSection.items
+        ? _filteredInventoryItems.length
+        : _filteredEmployees.length;
     if (totalItems == 0) {
       return 1;
     }
@@ -563,6 +735,17 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     return employees.sublist(startIndex, endIndex);
   }
 
+  List<InventoryItem> get _paginatedInventoryItems {
+    final items = _filteredInventoryItems;
+    final startIndex = _currentPage * _pageSize;
+    if (startIndex >= items.length) {
+      return const [];
+    }
+
+    final endIndex = (startIndex + _pageSize).clamp(0, items.length);
+    return items.sublist(startIndex, endIndex);
+  }
+
   void _syncCurrentPage({required int filteredCount}) {
     final totalPages = filteredCount == 0
         ? 1
@@ -579,6 +762,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   void _selectSection(_HomeSection section) {
     setState(() {
       _selectedSection = section;
+      _currentPage = 0;
     });
   }
 
@@ -1057,6 +1241,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         return 'Portal Kepegawaian';
       case _HomeSection.employees:
         return 'Data Pegawai';
+      case _HomeSection.items:
+        return 'Daftar Barang';
       case _HomeSection.users:
         return 'List User';
     }
@@ -1440,6 +1626,215 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     );
   }
 
+  Widget _buildItemsSection({
+    required ColorScheme colorScheme,
+    required bool isDark,
+    required bool isWide,
+    required List<InventoryItem> filteredItems,
+    required List<InventoryItem> items,
+    required int totalItems,
+    required int activeItems,
+    required int inactiveItems,
+    required int startItem,
+    required int endItem,
+  }) {
+    return SingleChildScrollView(
+      key: const ValueKey('items-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Daftar Barang',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SummaryCard(
+                    title: 'Total Barang',
+                    value: '$totalItems',
+                    icon: Icons.inventory_2_outlined,
+                    color: const Color(0xFF0F766E),
+                  ),
+                  SummaryCard(
+                    title: 'Barang Aktif',
+                    value: '$activeItems',
+                    icon: Icons.check_circle_outline,
+                    color: const Color(0xFF2563EB),
+                  ),
+                  SummaryCard(
+                    title: 'Nonaktif',
+                    value: '$inactiveItems',
+                    icon: Icons.archive_outlined,
+                    color: const Color(0xFFB45309),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF111827) : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark
+                        ? colorScheme.outline
+                        : const Color(0xFFE5E7EB),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark
+                          ? const Color(0x33000000)
+                          : const Color(0x12000000),
+                      blurRadius: isDark ? 18 : 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 12,
+                      spacing: 12,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Daftar Barang',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Kelola inventaris barang kantor pada satu tempat.',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(
+                          width: isWide ? 320 : double.infinity,
+                          child: TextField(
+                            controller: _itemSearchController,
+                            decoration: InputDecoration(
+                              hintText: 'Cari nama, kode, kategori, lokasi...',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIconConstraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
+                              suffixIcon: Visibility(
+                                visible: _itemSearchQuery.isNotEmpty,
+                                maintainAnimation: true,
+                                maintainSize: true,
+                                maintainState: true,
+                                child: IconButton(
+                                  onPressed: _itemSearchController.clear,
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: isWide ? 280 : 220,
+                      ),
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: filteredItems.isEmpty
+                            ? const EmptyInventoryState()
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (isWide)
+                                    InventoryItemDataTable(
+                                      items: items,
+                                      onViewDetails: _showInventoryItemDetails,
+                                      onEdit: _openInventoryItemForm,
+                                      onDelete: _deleteInventoryItem,
+                                    )
+                                  else
+                                    Column(
+                                      children: items
+                                          .map(
+                                            (item) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 12,
+                                              ),
+                                              child: InventoryItemCard(
+                                                item: item,
+                                                onViewDetails: () =>
+                                                    _showInventoryItemDetails(
+                                                      item,
+                                                    ),
+                                                onEdit: () =>
+                                                    _openInventoryItemForm(
+                                                      item: item,
+                                                    ),
+                                                onDelete: () =>
+                                                    _deleteInventoryItem(item),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  const SizedBox(height: 16),
+                                  PaginationFooter(
+                                    currentPage: _currentPage,
+                                    totalPages: _totalPages,
+                                    startItem: startItem,
+                                    endItem: endItem,
+                                    totalItems: filteredItems.length,
+                                    onPrevious: _currentPage == 0
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _currentPage--;
+                                            });
+                                          },
+                                    onNext: _currentPage >= _totalPages - 1
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _currentPage++;
+                                            });
+                                          },
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1448,9 +1843,15 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     final isDesktopLayout = MediaQuery.sizeOf(context).width >= 900;
     final filteredEmployees = _filteredEmployees;
     final employees = _paginatedEmployees;
+    final filteredInventoryItems = _filteredInventoryItems;
+    final inventoryItems = _paginatedInventoryItems;
     final totalEmployees = _employees.length;
     final activeEmployees = _employees.where((item) => item.isActive).length;
     final inactiveEmployees = totalEmployees - activeEmployees;
+    final totalInventoryItems = _inventoryItems.length;
+    final activeInventoryItems =
+        _inventoryItems.where((item) => item.isActive).length;
+    final inactiveInventoryItems = totalInventoryItems - activeInventoryItems;
     final dashboardTotalEmployees =
         _dashboardStats?.totalEmployees ?? totalEmployees;
     final dashboardActiveEmployees =
@@ -1458,14 +1859,20 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     final dashboardInactiveEmployees =
         _dashboardStats?.inactiveEmployees ?? inactiveEmployees;
     final employeeUsers = _employeeUsers;
-    final startItem = filteredEmployees.isEmpty
+    final activeFilteredItems = _selectedSection == _HomeSection.items
+        ? filteredInventoryItems
+        : filteredEmployees;
+    final activePageItems = _selectedSection == _HomeSection.items
+        ? inventoryItems
+        : employees;
+    final startItem = activeFilteredItems.isEmpty
         ? 0
         : (_currentPage * _pageSize) + 1;
-    final endItem = filteredEmployees.isEmpty
+    final endItem = activeFilteredItems.isEmpty
         ? 0
-        : ((_currentPage * _pageSize) + employees.length).clamp(
+        : ((_currentPage * _pageSize) + activePageItems.length).clamp(
             0,
-            filteredEmployees.length,
+            activeFilteredItems.length,
           );
 
     return Scaffold(
@@ -1502,10 +1909,18 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
               icon: const Icon(Icons.person_add_alt_1),
               label: const Text('Tambah Pegawai'),
             )
+          : _selectedSection == _HomeSection.items
+          ? FloatingActionButton.extended(
+              onPressed: _isSaving ? null : () => _openInventoryItemForm(),
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('Tambah Barang'),
+            )
           : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null && _employees.isEmpty
+          : _errorMessage != null &&
+                _employees.isEmpty &&
+                _inventoryItems.isEmpty
           ? ErrorState(message: _errorMessage!, onRetry: _loadEmployees)
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -1541,6 +1956,19 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     totalEmployees: totalEmployees,
                                     activeEmployees: activeEmployees,
                                     inactiveEmployees: inactiveEmployees,
+                                    startItem: startItem,
+                                    endItem: endItem,
+                                  )
+                                : _selectedSection == _HomeSection.items
+                                ? _buildItemsSection(
+                                    colorScheme: colorScheme,
+                                    isDark: isDark,
+                                    isWide: isWide,
+                                    filteredItems: filteredInventoryItems,
+                                    items: inventoryItems,
+                                    totalItems: totalInventoryItems,
+                                    activeItems: activeInventoryItems,
+                                    inactiveItems: inactiveInventoryItems,
                                     startItem: startItem,
                                     endItem: endItem,
                                   )
@@ -1645,6 +2073,13 @@ class _HomeSidebar extends StatelessWidget {
                 label: 'Data Pegawai',
                 selected: selectedSection == _HomeSection.employees,
                 onTap: () => onSelectSection(_HomeSection.employees),
+              ),
+              const SizedBox(height: 8),
+              _SidebarItem(
+                icon: Icons.inventory_2_outlined,
+                label: 'Daftar Barang',
+                selected: selectedSection == _HomeSection.items,
+                onTap: () => onSelectSection(_HomeSection.items),
               ),
               const SizedBox(height: 8),
               _SidebarItem(
@@ -2756,6 +3191,393 @@ class ErrorState extends StatelessWidget {
   }
 }
 
+class InventoryItemDataTable extends StatelessWidget {
+  const InventoryItemDataTable({
+    super.key,
+    required this.items,
+    required this.onViewDetails,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<InventoryItem> items;
+  final Future<void> Function(InventoryItem item) onViewDetails;
+  final Future<void> Function({InventoryItem? item}) onEdit;
+  final Future<void> Function(InventoryItem item) onDelete;
+
+  static const int _photoFlex = 2;
+  static const int _nameFlex = 4;
+  static const int _codeFlex = 3;
+  static const int _categoryFlex = 3;
+  static const int _quantityFlex = 3;
+  static const int _locationFlex = 4;
+  static const int _statusFlex = 3;
+  static const int _actionFlex = 3;
+
+  Widget _singleLineText(String value, {FontWeight? fontWeight, Color? color}) {
+    return Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: fontWeight,
+        color: color,
+        height: 1.2,
+      ),
+    );
+  }
+
+  Widget _headerCell(String label, int flex) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _dataCell({
+    required int flex,
+    required Widget child,
+    Alignment alignment = Alignment.centerLeft,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Align(alignment: alignment, child: child),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF111827) : const Color(0xFFF8FAFC),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+            ),
+            child: Row(
+              children: [
+                _headerCell('Foto', _photoFlex),
+                _headerCell('Nama Barang', _nameFlex),
+                _headerCell('Kode', _codeFlex),
+                _headerCell('Kategori', _categoryFlex),
+                _headerCell('Qty', _quantityFlex),
+                _headerCell('Lokasi', _locationFlex),
+                _headerCell('Status', _statusFlex),
+                _headerCell('Aksi', _actionFlex),
+              ],
+            ),
+          ),
+          ...items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            final isLast = index == items.length - 1;
+
+            return InkWell(
+              onTap: () => onViewDetails(item),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  border: isLast
+                      ? null
+                      : Border(
+                          bottom: BorderSide(
+                            color: isDark
+                                ? colorScheme.outline.withValues(alpha: 0.35)
+                                : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                ),
+                child: Row(
+                  children: [
+                    _dataCell(
+                      flex: _photoFlex,
+                      child: EmployeeAvatarButton(
+                        name: item.itemName,
+                        photoUrl: item.photoUrl,
+                        radius: 20,
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _nameFlex,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _singleLineText(
+                            item.itemName,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          _singleLineText(
+                            item.brand,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _codeFlex,
+                      child: _singleLineText(item.itemCode),
+                    ),
+                    _dataCell(
+                      flex: _categoryFlex,
+                      child: _singleLineText(item.category),
+                    ),
+                    _dataCell(
+                      flex: _quantityFlex,
+                      child: _singleLineText('${item.quantity} ${item.unit}'),
+                    ),
+                    _dataCell(
+                      flex: _locationFlex,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _singleLineText(item.location),
+                          _singleLineText(
+                            item.itemCondition,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _dataCell(
+                      flex: _statusFlex,
+                      child: StatusChip(isActive: item.isActive),
+                    ),
+                    _dataCell(
+                      flex: _actionFlex,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Edit',
+                              onPressed: () => onEdit(item: item),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Hapus',
+                              onPressed: () => onDelete(item),
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class InventoryItemCard extends StatelessWidget {
+  const InventoryItemCard({
+    super.key,
+    required this.item,
+    required this.onViewDetails,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final InventoryItem item;
+  final VoidCallback onViewDetails;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onViewDetails,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF162033) : const Color(0xFFF9FCFB),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+            ),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  EmployeeAvatarButton(
+                    name: item.itemName,
+                    photoUrl: item.photoUrl,
+                    radius: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.itemName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${item.itemCode} • ${item.category}',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusChip(isActive: item.isActive),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _InfoRow(label: 'Merek', value: item.brand),
+              _InfoRow(label: 'Jumlah', value: '${item.quantity} ${item.unit}'),
+              _InfoRow(label: 'Kondisi', value: item.itemCondition),
+              _InfoRow(label: 'Lokasi', value: item.location),
+              _InfoRow(label: 'Catatan', value: item.notes),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Edit'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Hapus'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class InventoryItemDetailDialog extends StatelessWidget {
+  const InventoryItemDetailDialog({super.key, required this.item});
+
+  final InventoryItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: const Text('Detail Barang'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  EmployeeAvatarButton(
+                    name: item.itemName,
+                    photoUrl: item.photoUrl,
+                    radius: 28,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.itemName,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${item.itemCode} • ${item.category}',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusChip(isActive: item.isActive),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _InfoRow(label: 'Merek', value: item.brand),
+              _InfoRow(label: 'Jumlah', value: '${item.quantity} ${item.unit}'),
+              _InfoRow(label: 'Kondisi', value: item.itemCondition),
+              _InfoRow(label: 'Lokasi', value: item.location),
+              _InfoRow(label: 'Catatan', value: item.notes),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
+    );
+  }
+}
+
 class EmployeeDataTable extends StatelessWidget {
   const EmployeeDataTable({
     super.key,
@@ -3463,6 +4285,47 @@ class EmptyEmployeeState extends StatelessWidget {
   }
 }
 
+class EmptyInventoryState extends StatelessWidget {
+  const EmptyInventoryState({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF162033) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? colorScheme.outline : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 48,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Belum ada data barang di database',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tambahkan barang pertama untuk mulai menyusun inventaris.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class EmployeeFormDialog extends StatefulWidget {
   const EmployeeFormDialog({super.key, this.employee, required this.userId});
 
@@ -3841,6 +4704,448 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Text(_isEditing ? 'Simpan Perubahan' : 'Tambah'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator:
+            validator ??
+            (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '$label wajib diisi';
+              }
+              return null;
+            },
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+}
+
+class InventoryItemFormDialog extends StatefulWidget {
+  const InventoryItemFormDialog({
+    super.key,
+    this.item,
+    required this.userId,
+  });
+
+  final InventoryItem? item;
+  final String userId;
+
+  @override
+  State<InventoryItemFormDialog> createState() => _InventoryItemFormDialogState();
+}
+
+class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final EmployeeRepository _repository = const EmployeeRepository();
+  late final TextEditingController _itemNameController;
+  late final TextEditingController _itemCodeController;
+  late final TextEditingController _categoryController;
+  late final TextEditingController _brandController;
+  late final TextEditingController _quantityController;
+  late final TextEditingController _unitController;
+  late final TextEditingController _conditionController;
+  late final TextEditingController _locationController;
+  late final TextEditingController _notesController;
+  Uint8List? _selectedPhotoBytes;
+  String? _selectedPhotoName;
+  late String _photoUrl;
+  late bool _isActive;
+  bool _isSubmitting = false;
+  bool _isPickingPhoto = false;
+
+  bool get _isEditing => widget.item != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.item;
+    _itemNameController = TextEditingController(text: item?.itemName ?? '');
+    _itemCodeController = TextEditingController(text: item?.itemCode ?? '');
+    _categoryController = TextEditingController(text: item?.category ?? '');
+    _brandController = TextEditingController(text: item?.brand ?? '');
+    _quantityController = TextEditingController(
+      text: item?.quantity.toString() ?? '0',
+    );
+    _unitController = TextEditingController(text: item?.unit ?? 'unit');
+    _conditionController = TextEditingController(
+      text: item?.itemCondition ?? 'baik',
+    );
+    _locationController = TextEditingController(text: item?.location ?? '');
+    _notesController = TextEditingController(text: item?.notes ?? '');
+    _photoUrl = item?.photoUrl ?? '';
+    _isActive = item?.isActive ?? true;
+    _itemNameController.addListener(_refreshPreview);
+  }
+
+  @override
+  void dispose() {
+    _itemNameController.removeListener(_refreshPreview);
+    _itemNameController.dispose();
+    _itemCodeController.dispose();
+    _categoryController.dispose();
+    _brandController.dispose();
+    _quantityController.dispose();
+    _unitController.dispose();
+    _conditionController.dispose();
+    _locationController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _refreshPreview() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  Future<void> _pickPhoto() async {
+    if (_isPickingPhoto || _isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _isPickingPhoto = true;
+    });
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+
+      if (!mounted || result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.single;
+      if (file.bytes == null) {
+        throw Exception('File foto tidak terbaca.');
+      }
+
+      setState(() {
+        _selectedPhotoBytes = file.bytes!;
+        _selectedPhotoName = file.name;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memilih foto: $error'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPickingPhoto = false;
+        });
+      }
+    }
+  }
+
+  void _removePhoto() {
+    setState(() {
+      _selectedPhotoBytes = null;
+      _selectedPhotoName = null;
+      _photoUrl = '';
+    });
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final existing = widget.item;
+    final now = DateTime.now().toUtc();
+    var photoUrl = _photoUrl;
+
+    try {
+      if (_selectedPhotoBytes != null && _selectedPhotoName != null) {
+        photoUrl = await _repository.uploadInventoryPhoto(
+          bytes: _selectedPhotoBytes!,
+          fileName: _selectedPhotoName!,
+        );
+      }
+    } on StorageException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload foto gagal: $error'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final item = InventoryItem(
+      id: existing?.id ?? '',
+      userId: existing?.userId ?? widget.userId,
+      photoUrl: photoUrl,
+      itemName: _itemNameController.text.trim(),
+      itemCode: _itemCodeController.text.trim(),
+      category: _categoryController.text.trim(),
+      brand: _brandController.text.trim(),
+      quantity: int.tryParse(_quantityController.text.trim()) ?? 0,
+      unit: _unitController.text.trim(),
+      itemCondition: _conditionController.text.trim(),
+      location: _locationController.text.trim(),
+      notes: _notesController.text.trim(),
+      isActive: _isActive,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.pop(context, item);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Edit Barang' : 'Tambah Barang'),
+      content: SizedBox(
+        width: 520,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: EmployeeAvatar(
+                    name: _itemNameController.text.trim().isEmpty
+                        ? 'Barang'
+                        : _itemNameController.text.trim(),
+                    photoUrl: _photoUrl,
+                    photoBytes: _selectedPhotoBytes,
+                    radius: 30,
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Foto Barang',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _selectedPhotoName ??
+                            (_photoUrl.isEmpty
+                                ? 'Belum ada foto dipilih'
+                                : 'Foto tersimpan dan akan dipakai lagi'),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isSubmitting ? null : _pickPhoto,
+                              icon: _isPickingPhoto
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.photo_library_outlined),
+                              label: Text(
+                                _selectedPhotoBytes != null ||
+                                        _photoUrl.isNotEmpty
+                                    ? 'Ganti Foto'
+                                    : 'Pilih Foto',
+                              ),
+                            ),
+                          ),
+                          if (_selectedPhotoBytes != null ||
+                              _photoUrl.isNotEmpty)
+                            const SizedBox(width: 12),
+                          if (_selectedPhotoBytes != null ||
+                              _photoUrl.isNotEmpty)
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: _isSubmitting ? null : _removePhoto,
+                                icon: const Icon(Icons.delete_outline),
+                                label: const Text('Hapus Foto'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                _buildField(
+                  controller: _itemNameController,
+                  label: 'Nama Barang',
+                  icon: Icons.inventory_2_outlined,
+                ),
+                _buildField(
+                  controller: _itemCodeController,
+                  label: 'Kode Barang',
+                  icon: Icons.qr_code_2_outlined,
+                ),
+                _buildField(
+                  controller: _categoryController,
+                  label: 'Kategori',
+                  icon: Icons.category_outlined,
+                ),
+                _buildField(
+                  controller: _brandController,
+                  label: 'Merek',
+                  icon: Icons.local_offer_outlined,
+                  validator: (value) => null,
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildField(
+                        controller: _quantityController,
+                        label: 'Jumlah',
+                        icon: Icons.onetwothree,
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          final text = value?.trim() ?? '';
+                          if (text.isEmpty) {
+                            return 'Jumlah wajib diisi';
+                          }
+                          final quantity = int.tryParse(text);
+                          if (quantity == null || quantity < 0) {
+                            return 'Jumlah harus angka 0 atau lebih';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildField(
+                        controller: _unitController,
+                        label: 'Satuan',
+                        icon: Icons.straighten_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+                _buildField(
+                  controller: _conditionController,
+                  label: 'Kondisi',
+                  icon: Icons.health_and_safety_outlined,
+                ),
+                _buildField(
+                  controller: _locationController,
+                  label: 'Lokasi',
+                  icon: Icons.location_on_outlined,
+                ),
+                _buildField(
+                  controller: _notesController,
+                  label: 'Catatan',
+                  icon: Icons.notes_outlined,
+                  maxLines: 3,
+                  validator: (value) => null,
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Status Barang Aktif'),
+                  subtitle: const Text(
+                    'Matikan jika barang sudah tidak digunakan.',
+                  ),
+                  value: _isActive,
+                  onChanged: (value) {
+                    setState(() {
+                      _isActive = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: Text(_isEditing ? 'Simpan Perubahan' : 'Tambah'),
         ),
       ],
     );

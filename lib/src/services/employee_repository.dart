@@ -4,6 +4,7 @@ import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/employee.dart';
+import '../models/inventory_item.dart';
 import '../supabase_bootstrap.dart';
 
 class EmployeeDashboardStats {
@@ -139,6 +140,19 @@ class EmployeeRepository {
         .toList();
   }
 
+  Future<List<InventoryItem>> fetchInventoryItems() async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient
+        .from('inventory_items')
+        .select()
+        .order('created_at', ascending: false);
+
+    return (response as List<dynamic>)
+        .map((item) => InventoryItem.fromMap(item as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<EmployeeDashboardStats> fetchDashboardStats() async {
     await ensureSignedIn();
 
@@ -256,6 +270,36 @@ class EmployeeRepository {
     await supabaseClient.from('employees').delete().eq('id', id);
   }
 
+  Future<InventoryItem> createInventoryItem(InventoryItem item) async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient
+        .from('inventory_items')
+        .insert(item.toInsertMap())
+        .select()
+        .single();
+
+    return InventoryItem.fromMap(response);
+  }
+
+  Future<InventoryItem> updateInventoryItem(InventoryItem item) async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient
+        .from('inventory_items')
+        .update(item.toUpdateMap())
+        .eq('id', item.id)
+        .select()
+        .single();
+
+    return InventoryItem.fromMap(response);
+  }
+
+  Future<void> deleteInventoryItem(String id) async {
+    await ensureSignedIn();
+    await supabaseClient.from('inventory_items').delete().eq('id', id);
+  }
+
   Future<String> uploadEmployeePhoto({
     required Uint8List bytes,
     required String fileName,
@@ -286,5 +330,12 @@ class EmployeeRepository {
     return supabaseClient.storage
         .from(_employeePhotosBucket)
         .getPublicUrl(objectPath);
+  }
+
+  Future<String> uploadInventoryPhoto({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    return uploadEmployeePhoto(bytes: bytes, fileName: fileName);
   }
 }
