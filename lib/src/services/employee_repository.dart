@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
 import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -116,6 +117,10 @@ class EmployeeRepository {
   const EmployeeRepository();
 
   static const String _employeePhotosBucket = 'employee-photos';
+  static const int _maxUploadDimension = 1280;
+  static const int _jpegQuality = 78;
+  static const int _thumbnailDimension = 256;
+  static const int _thumbnailQuality = 72;
 
   User? get currentUser => supabaseClient.auth.currentUser;
 
@@ -300,6 +305,71 @@ class EmployeeRepository {
     await supabaseClient.from('inventory_items').delete().eq('id', id);
   }
 
+  ({Uint8List bytes, String fileName, String contentType}) _prepareImageForUpload({
+    required Uint8List bytes,
+    required String fileName,
+    required int maxDimension,
+    required int jpegQuality,
+  }) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      final fallbackContentType =
+          lookupMimeType(fileName, headerBytes: bytes) ?? 'image/jpeg';
+      return (
+        bytes: bytes,
+        fileName: fileName,
+        contentType: fallbackContentType,
+      );
+    }
+
+    final resized = decoded.width > maxDimension || decoded.height > maxDimension
+        ? img.copyResize(
+            decoded,
+            width: decoded.width >= decoded.height ? maxDimension : null,
+            height: decoded.height > decoded.width ? maxDimension : null,
+            interpolation: img.Interpolation.cubic,
+          )
+        : decoded;
+
+    final lowerName = fileName.toLowerCase();
+    if (lowerName.endsWith('.png')) {
+      final encoded = Uint8List.fromList(img.encodePng(resized, level: 6));
+      return (
+        bytes: encoded,
+        fileName: _replaceExtension(fileName, 'png'),
+        contentType: 'image/png',
+      );
+    }
+
+    final encoded = Uint8List.fromList(
+      img.encodeJpg(resized, quality: jpegQuality),
+    );
+
+    return (
+      bytes: encoded,
+      fileName: _replaceExtension(fileName, 'jpg'),
+      contentType: 'image/jpeg',
+    );
+  }
+
+  String _replaceExtension(String fileName, String extension) {
+    final trimmed = fileName.trim();
+    final dotIndex = trimmed.lastIndexOf('.');
+    final baseName = dotIndex <= 0 ? trimmed : trimmed.substring(0, dotIndex);
+    return '$baseName.$extension';
+  }
+
+  String _appendSuffixBeforeExtension(String fileName, String suffix) {
+    final trimmed = fileName.trim();
+    final dotIndex = trimmed.lastIndexOf('.');
+    if (dotIndex <= 0) {
+      return '${trimmed}_$suffix';
+    }
+    final baseName = trimmed.substring(0, dotIndex);
+    final extension = trimmed.substring(dotIndex + 1);
+    return '${baseName}_$suffix.$extension';
+  }
+
   Future<String> uploadEmployeePhoto({
     required Uint8List bytes,
     required String fileName,
@@ -311,20 +381,52 @@ class EmployeeRepository {
       throw const AuthException('User belum terautentikasi.');
     }
 
-    final safeFileName = fileName.trim().replaceAll(
+    final optimized = _prepareImageForUpload(
+      bytes: bytes,
+      fileName: fileName,
+      maxDimension: _maxUploadDimension,
+      jpegQuality: _jpegQuality,
+    );
+    final thumbnail = _prepareImageForUpload(
+      bytes: bytes,
+      fileName: _appendSuffixBeforeExtension(fileName, 'thumb'),
+      maxDimension: _thumbnailDimension,
+      jpegQuality: _thumbnailQuality,
+    );
+    final safeFileName = optimized.fileName.trim().replaceAll(
       RegExp(r'[^A-Za-z0-9._-]'),
       '_',
     );
+    final safeThumbnailFileName = thumbnail.fileName.trim().replaceAll(
+      RegExp(r'[^A-Za-z0-9._-]'),
+      '_',
+    );
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
     final objectPath =
-        '$userId/${DateTime.now().millisecondsSinceEpoch}_$safeFileName';
-    final contentType = lookupMimeType(fileName, headerBytes: bytes);
+        '$userId/${timestamp}_$safeFileName';
+    final thumbnailObjectPath =
+        '$userId/${timestamp}_$safeThumbnailFileName';
 
     await supabaseClient.storage
         .from(_employeePhotosBucket)
         .uploadBinary(
           objectPath,
-          bytes,
-          fileOptions: FileOptions(contentType: contentType, upsert: false),
+          optimized.bytes,
+          fileOptions: FileOptions(
+            contentType: optimized.contentType,
+            upsert: false,
+          ),
+        );
+
+    await supabaseClient.storage
+        .from(_employeePhotosBucket)
+        .uploadBinary(
+          thumbnailObjectPath,
+          thumbnail.bytes,
+          fileOptions: FileOptions(
+            contentType: thumbnail.contentType,
+            upsert: false,
+          ),
         );
 
     return supabaseClient.storage

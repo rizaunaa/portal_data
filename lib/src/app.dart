@@ -4116,6 +4116,32 @@ class EmployeeAvatarButton extends StatelessWidget {
   }
 }
 
+String _buildThumbnailPhotoUrl(String photoUrl) {
+  final trimmed = photoUrl.trim();
+  if (trimmed.isEmpty) {
+    return trimmed;
+  }
+
+  final queryIndex = trimmed.indexOf('?');
+  final path = queryIndex >= 0 ? trimmed.substring(0, queryIndex) : trimmed;
+  final query = queryIndex >= 0 ? trimmed.substring(queryIndex) : '';
+  final lastSlash = path.lastIndexOf('/');
+  final fileName = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+  final dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex <= 0) {
+    return trimmed;
+  }
+
+  final baseName = fileName.substring(0, dotIndex);
+  final extension = fileName.substring(dotIndex);
+  final thumbFileName = '${baseName}_thumb$extension';
+  final thumbPath = lastSlash >= 0
+      ? '${path.substring(0, lastSlash + 1)}$thumbFileName'
+      : thumbFileName;
+
+  return '$thumbPath$query';
+}
+
 class EmployeeAvatar extends StatelessWidget {
   const EmployeeAvatar({
     super.key,
@@ -4133,20 +4159,45 @@ class EmployeeAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmedPhotoUrl = photoUrl.trim();
+    final thumbnailPhotoUrl = _buildThumbnailPhotoUrl(trimmedPhotoUrl);
     final hasPhoto = trimmedPhotoUrl.isNotEmpty;
     final initial = name.trim().isEmpty ? '?' : name.trim().characters.first;
 
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: const Color(0xFFCCFBF1),
-      foregroundColor: const Color(0xFF115E59),
-      foregroundImage: photoBytes != null
-          ? MemoryImage(photoBytes!)
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: const BoxDecoration(
+        color: Color(0xFFCCFBF1),
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: photoBytes != null
+          ? Image.memory(photoBytes!, fit: BoxFit.cover)
           : hasPhoto
-          ? NetworkImage(trimmedPhotoUrl)
-          : null,
-      onForegroundImageError: photoBytes == null && hasPhoto ? (_, _) {} : null,
-      child: Text(initial.toUpperCase()),
+          ? Image.network(
+              thumbnailPhotoUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Image.network(
+                  trimmedPhotoUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Center(
+                      child: Text(
+                        initial.toUpperCase(),
+                        style: const TextStyle(color: Color(0xFF115E59)),
+                      ),
+                    );
+                  },
+                );
+              },
+            )
+          : Center(
+              child: Text(
+                initial.toUpperCase(),
+                style: const TextStyle(color: Color(0xFF115E59)),
+              ),
+            ),
     );
   }
 }
