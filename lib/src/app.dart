@@ -1647,15 +1647,6 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Daftar Barang',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 8),
               Wrap(
                 spacing: 16,
                 runSpacing: 16,
@@ -1700,132 +1691,135 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      runSpacing: 12,
-                      spacing: 12,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Daftar Barang',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: colorScheme.onSurface,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        runSpacing: 12,
+                        spacing: 12,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Daftar Barang',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Kelola inventaris barang kantor pada satu tempat.',
-                              style: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
+                              const SizedBox(height: 4),
+                              Text(
+                                'Kelola inventaris barang kantor pada satu tempat.',
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(
-                          width: isWide ? 320 : double.infinity,
-                          child: TextField(
-                            controller: _itemSearchController,
-                            decoration: InputDecoration(
-                              hintText: 'Cari nama, kode, kategori, lokasi...',
-                              prefixIcon: const Icon(Icons.search),
-                              suffixIconConstraints: const BoxConstraints(
-                                minWidth: 48,
-                                minHeight: 48,
-                              ),
-                              suffixIcon: Visibility(
-                                visible: _itemSearchQuery.isNotEmpty,
-                                maintainAnimation: true,
-                                maintainSize: true,
-                                maintainState: true,
-                                child: IconButton(
-                                  onPressed: _itemSearchController.clear,
-                                  icon: const Icon(Icons.close),
+                            ],
+                          ),
+                          SizedBox(
+                            width: isWide ? 320 : double.infinity,
+                            child: TextField(
+                              controller: _itemSearchController,
+                              decoration: InputDecoration(
+                                hintText: 'Cari nama, kode, kategori, lokasi...',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                suffixIcon: Visibility(
+                                  visible: _itemSearchQuery.isNotEmpty,
+                                  maintainAnimation: true,
+                                  maintainSize: true,
+                                  maintainState: true,
+                                  child: IconButton(
+                                    onPressed: _itemSearchController.clear,
+                                    icon: const Icon(Icons.close),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: isWide ? 280 : 220,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: isWide ? 280 : 220,
-                      ),
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: filteredItems.isEmpty
-                            ? const EmptyInventoryState()
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (isWide)
-                                    InventoryItemDataTable(
-                                      items: items,
-                                      onViewDetails: _showInventoryItemDetails,
-                                      onEdit: _openInventoryItemForm,
-                                      onDelete: _deleteInventoryItem,
-                                    )
-                                  else
-                                    Column(
-                                      children: items
-                                          .map(
-                                            (item) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 12,
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: filteredItems.isEmpty
+                              ? const EmptyInventoryState()
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (isWide)
+                                      InventoryItemDataTable(
+                                        items: items,
+                                        onViewDetails: _showInventoryItemDetails,
+                                        onEdit: _openInventoryItemForm,
+                                        onDelete: _deleteInventoryItem,
+                                      )
+                                    else
+                                      Column(
+                                        children: items
+                                            .map(
+                                              (item) => Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 12,
+                                                ),
+                                                child: InventoryItemCard(
+                                                  item: item,
+                                                  onViewDetails: () =>
+                                                      _showInventoryItemDetails(
+                                                        item,
+                                                      ),
+                                                  onEdit: () =>
+                                                      _openInventoryItemForm(
+                                                        item: item,
+                                                      ),
+                                                  onDelete: () =>
+                                                      _deleteInventoryItem(item),
+                                                ),
                                               ),
-                                              child: InventoryItemCard(
-                                                item: item,
-                                                onViewDetails: () =>
-                                                    _showInventoryItemDetails(
-                                                      item,
-                                                    ),
-                                                onEdit: () =>
-                                                    _openInventoryItemForm(
-                                                      item: item,
-                                                    ),
-                                                onDelete: () =>
-                                                    _deleteInventoryItem(item),
-                                              ),
-                                            ),
-                                          )
-                                          .toList(),
+                                            )
+                                            .toList(),
+                                      ),
+                                    const SizedBox(height: 16),
+                                    PaginationFooter(
+                                      currentPage: _currentPage,
+                                      totalPages: _totalPages,
+                                      startItem: startItem,
+                                      endItem: endItem,
+                                      totalItems: filteredItems.length,
+                                      onPrevious: _currentPage == 0
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _currentPage--;
+                                              });
+                                            },
+                                      onNext: _currentPage >= _totalPages - 1
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _currentPage++;
+                                              });
+                                            },
                                     ),
-                                  const SizedBox(height: 16),
-                                  PaginationFooter(
-                                    currentPage: _currentPage,
-                                    totalPages: _totalPages,
-                                    startItem: startItem,
-                                    endItem: endItem,
-                                    totalItems: filteredItems.length,
-                                    onPrevious: _currentPage == 0
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _currentPage--;
-                                            });
-                                          },
-                                    onNext: _currentPage >= _totalPages - 1
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _currentPage++;
-                                            });
-                                          },
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
