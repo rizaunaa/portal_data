@@ -406,6 +406,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       builder: (context) => EmployeeFormDialog(
         employee: employee,
         userId: _repository.currentUser?.id ?? '',
+        existingEmployees: _employees,
       ),
     );
 
@@ -4372,10 +4373,16 @@ class EmptyInventoryState extends StatelessWidget {
 }
 
 class EmployeeFormDialog extends StatefulWidget {
-  const EmployeeFormDialog({super.key, this.employee, required this.userId});
+  const EmployeeFormDialog({
+    super.key,
+    this.employee,
+    required this.userId,
+    required this.existingEmployees,
+  });
 
   final Employee? employee;
   final String userId;
+  final List<Employee> existingEmployees;
 
   @override
   State<EmployeeFormDialog> createState() => _EmployeeFormDialogState();
@@ -4400,6 +4407,21 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
   bool _isPickingPhoto = false;
 
   bool get _isEditing => widget.employee != null;
+  Iterable<Employee> get _otherEmployees => widget.existingEmployees.where(
+    (employee) => employee.id != widget.employee?.id,
+  );
+  bool get _canSubmit {
+    if (_isSubmitting) {
+      return false;
+    }
+    return (_validateRequired(_nameController.text, 'Nama Lengkap') == null) &&
+        (_validateUniqueNip(_nipController.text) == null) &&
+        (_validateRequired(_positionController.text, 'Jabatan') == null) &&
+        (_validateRequired(_departmentController.text, 'Unit / Divisi') ==
+            null) &&
+        (_validateUniqueEmail(_emailController.text) == null) &&
+        (_validateUniquePhone(_phoneController.text) == null);
+  }
 
   @override
   void initState() {
@@ -4438,6 +4460,60 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
     }
 
     setState(() {});
+    _formKey.currentState?.validate();
+  }
+
+  void _refreshFormState() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+    _formKey.currentState?.validate();
+  }
+
+  String? _validateUniqueNip(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return 'NIP wajib diisi';
+    }
+    final isDuplicate = _otherEmployees.any(
+      (employee) => employee.nip.trim() == text,
+    );
+    return isDuplicate ? 'NIP sudah terdaftar' : null;
+  }
+
+  String? _validateUniqueEmail(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return 'Email wajib diisi';
+    }
+    if (!text.contains('@')) {
+      return 'Format email belum valid';
+    }
+    final normalized = text.toLowerCase();
+    final isDuplicate = _otherEmployees.any(
+      (employee) => employee.email.trim().toLowerCase() == normalized,
+    );
+    return isDuplicate ? 'Email sudah terdaftar' : null;
+  }
+
+  String? _validateUniquePhone(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return null;
+    }
+    final isDuplicate = _otherEmployees.any(
+      (employee) => employee.phone.trim() == text,
+    );
+    return isDuplicate ? 'Nomor telepon sudah terdaftar' : null;
+  }
+
+  String? _validateRequired(String? value, String label) {
+    if (value == null || value.trim().isEmpty) {
+      return '$label wajib diisi';
+    }
+    return null;
   }
 
   Future<void> _pickPhoto() async {
@@ -4581,6 +4657,8 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
         width: 520,
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          onChanged: _refreshFormState,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -4675,6 +4753,7 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
                   controller: _nipController,
                   label: 'NIP',
                   icon: Icons.numbers_outlined,
+                  validator: _validateUniqueNip,
                 ),
                 _buildField(
                   controller: _positionController,
@@ -4691,23 +4770,14 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
                   label: 'Email',
                   icon: Icons.alternate_email,
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    final text = value?.trim() ?? '';
-                    if (text.isEmpty) {
-                      return 'Email wajib diisi';
-                    }
-                    if (!text.contains('@')) {
-                      return 'Format email belum valid';
-                    }
-                    return null;
-                  },
+                  validator: _validateUniqueEmail,
                 ),
                 _buildField(
                   controller: _phoneController,
                   label: 'Nomor Telepon',
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
-                  validator: (value) => null,
+                  validator: _validateUniquePhone,
                 ),
                 _buildField(
                   controller: _addressController,
@@ -4741,7 +4811,7 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
           child: const Text('Batal'),
         ),
         FilledButton(
-          onPressed: _isSubmitting ? null : _submit,
+          onPressed: _canSubmit ? _submit : null,
           child: _isSubmitting
               ? const SizedBox(
                   width: 18,
@@ -4768,14 +4838,7 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
         controller: controller,
         keyboardType: keyboardType,
         maxLines: maxLines,
-        validator:
-            validator ??
-            (value) {
-              if (value == null || value.trim().isEmpty) {
-                return '$label wajib diisi';
-              }
-              return null;
-            },
+        validator: validator ?? (value) => _validateRequired(value, label),
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
@@ -4820,6 +4883,19 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
   bool _isPickingPhoto = false;
 
   bool get _isEditing => widget.item != null;
+  bool get _canSubmit {
+    if (_isSubmitting) {
+      return false;
+    }
+    return (_validateRequired(_itemNameController.text, 'Nama Barang') ==
+            null) &&
+        (_validateRequired(_itemCodeController.text, 'Kode Barang') == null) &&
+        (_validateRequired(_categoryController.text, 'Kategori') == null) &&
+        (_validateQuantity(_quantityController.text) == null) &&
+        (_validateRequired(_unitController.text, 'Satuan') == null) &&
+        (_validateRequired(_conditionController.text, 'Kondisi') == null) &&
+        (_validateRequired(_locationController.text, 'Lokasi') == null);
+  }
 
   @override
   void initState() {
@@ -4864,6 +4940,35 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
     }
 
     setState(() {});
+    _formKey.currentState?.validate();
+  }
+
+  void _refreshFormState() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+    _formKey.currentState?.validate();
+  }
+
+  String? _validateRequired(String? value, String label) {
+    if (value == null || value.trim().isEmpty) {
+      return '$label wajib diisi';
+    }
+    return null;
+  }
+
+  String? _validateQuantity(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return 'Jumlah wajib diisi';
+    }
+    final quantity = int.tryParse(text);
+    if (quantity == null || quantity < 0) {
+      return 'Jumlah harus angka 0 atau lebih';
+    }
+    return null;
   }
 
   Future<void> _pickPhoto() async {
@@ -5009,6 +5114,8 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
         width: 520,
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          onChanged: _refreshFormState,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -5124,17 +5231,7 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
                         label: 'Jumlah',
                         icon: Icons.onetwothree,
                         keyboardType: TextInputType.number,
-                        validator: (value) {
-                          final text = value?.trim() ?? '';
-                          if (text.isEmpty) {
-                            return 'Jumlah wajib diisi';
-                          }
-                          final quantity = int.tryParse(text);
-                          if (quantity == null || quantity < 0) {
-                            return 'Jumlah harus angka 0 atau lebih';
-                          }
-                          return null;
-                        },
+                        validator: _validateQuantity,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -5189,7 +5286,7 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
           child: const Text('Batal'),
         ),
         FilledButton(
-          onPressed: _isSubmitting ? null : _submit,
+          onPressed: _canSubmit ? _submit : null,
           child: Text(_isEditing ? 'Simpan Perubahan' : 'Tambah'),
         ),
       ],
@@ -5211,13 +5308,7 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
         keyboardType: keyboardType,
         maxLines: maxLines,
         validator:
-            validator ??
-            (value) {
-              if (value == null || value.trim().isEmpty) {
-                return '$label wajib diisi';
-              }
-              return null;
-            },
+            validator ?? (value) => _validateRequired(value, label),
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
