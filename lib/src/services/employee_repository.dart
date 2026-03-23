@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -305,60 +306,6 @@ class EmployeeRepository {
     await supabaseClient.from('inventory_items').delete().eq('id', id);
   }
 
-  ({Uint8List bytes, String fileName, String contentType}) _prepareImageForUpload({
-    required Uint8List bytes,
-    required String fileName,
-    required int maxDimension,
-    required int jpegQuality,
-  }) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      final fallbackContentType =
-          lookupMimeType(fileName, headerBytes: bytes) ?? 'image/jpeg';
-      return (
-        bytes: bytes,
-        fileName: fileName,
-        contentType: fallbackContentType,
-      );
-    }
-
-    final resized = decoded.width > maxDimension || decoded.height > maxDimension
-        ? img.copyResize(
-            decoded,
-            width: decoded.width >= decoded.height ? maxDimension : null,
-            height: decoded.height > decoded.width ? maxDimension : null,
-            interpolation: img.Interpolation.cubic,
-          )
-        : decoded;
-
-    final lowerName = fileName.toLowerCase();
-    if (lowerName.endsWith('.png')) {
-      final encoded = Uint8List.fromList(img.encodePng(resized, level: 6));
-      return (
-        bytes: encoded,
-        fileName: _replaceExtension(fileName, 'png'),
-        contentType: 'image/png',
-      );
-    }
-
-    final encoded = Uint8List.fromList(
-      img.encodeJpg(resized, quality: jpegQuality),
-    );
-
-    return (
-      bytes: encoded,
-      fileName: _replaceExtension(fileName, 'jpg'),
-      contentType: 'image/jpeg',
-    );
-  }
-
-  String _replaceExtension(String fileName, String extension) {
-    final trimmed = fileName.trim();
-    final dotIndex = trimmed.lastIndexOf('.');
-    final baseName = dotIndex <= 0 ? trimmed : trimmed.substring(0, dotIndex);
-    return '$baseName.$extension';
-  }
-
   String _appendSuffixBeforeExtension(String fileName, String suffix) {
     final trimmed = fileName.trim();
     final dotIndex = trimmed.lastIndexOf('.');
@@ -381,18 +328,20 @@ class EmployeeRepository {
       throw const AuthException('User belum terautentikasi.');
     }
 
-    final optimized = _prepareImageForUpload(
-      bytes: bytes,
-      fileName: fileName,
-      maxDimension: _maxUploadDimension,
-      jpegQuality: _jpegQuality,
+    final preparedImages = await compute(
+      _prepareUploadImagesInBackground,
+      _ImagePreparationRequest(
+        bytes: bytes,
+        originalFileName: fileName,
+        thumbnailFileName: _appendSuffixBeforeExtension(fileName, 'thumb'),
+        maxUploadDimension: _maxUploadDimension,
+        jpegQuality: _jpegQuality,
+        thumbnailDimension: _thumbnailDimension,
+        thumbnailQuality: _thumbnailQuality,
+      ),
     );
-    final thumbnail = _prepareImageForUpload(
-      bytes: bytes,
-      fileName: _appendSuffixBeforeExtension(fileName, 'thumb'),
-      maxDimension: _thumbnailDimension,
-      jpegQuality: _thumbnailQuality,
-    );
+    final optimized = preparedImages.optimized;
+    final thumbnail = preparedImages.thumbnail;
     final safeFileName = optimized.fileName.trim().replaceAll(
       RegExp(r'[^A-Za-z0-9._-]'),
       '_',
@@ -440,4 +389,114 @@ class EmployeeRepository {
   }) async {
     return uploadEmployeePhoto(bytes: bytes, fileName: fileName);
   }
+}
+
+class _PreparedImagePayload {
+  const _PreparedImagePayload({
+    required this.bytes,
+    required this.fileName,
+    required this.contentType,
+  });
+
+  final Uint8List bytes;
+  final String fileName;
+  final String contentType;
+}
+
+class _ImagePreparationRequest {
+  const _ImagePreparationRequest({
+    required this.bytes,
+    required this.originalFileName,
+    required this.thumbnailFileName,
+    required this.maxUploadDimension,
+    required this.jpegQuality,
+    required this.thumbnailDimension,
+    required this.thumbnailQuality,
+  });
+
+  final Uint8List bytes;
+  final String originalFileName;
+  final String thumbnailFileName;
+  final int maxUploadDimension;
+  final int jpegQuality;
+  final int thumbnailDimension;
+  final int thumbnailQuality;
+}
+
+class _PreparedUploadImages {
+  const _PreparedUploadImages({
+    required this.optimized,
+    required this.thumbnail,
+  });
+
+  final _PreparedImagePayload optimized;
+  final _PreparedImagePayload thumbnail;
+}
+
+_PreparedUploadImages _prepareUploadImagesInBackground(
+  _ImagePreparationRequest request,
+) {
+  return _PreparedUploadImages(
+    optimized: _prepareSingleImageForUpload(
+      bytes: request.bytes,
+      fileName: request.originalFileName,
+      maxDimension: request.maxUploadDimension,
+      jpegQuality: request.jpegQuality,
+    ),
+    thumbnail: _prepareSingleImageForUpload(
+      bytes: request.bytes,
+      fileName: request.thumbnailFileName,
+      maxDimension: request.thumbnailDimension,
+      jpegQuality: request.thumbnailQuality,
+    ),
+  );
+}
+
+_PreparedImagePayload _prepareSingleImageForUpload({
+  required Uint8List bytes,
+  required String fileName,
+  required int maxDimension,
+  required int jpegQuality,
+}) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) {
+    final fallbackContentType =
+        lookupMimeType(fileName, headerBytes: bytes) ?? 'image/jpeg';
+    return _PreparedImagePayload(
+      bytes: bytes,
+      fileName: fileName,
+      contentType: fallbackContentType,
+    );
+  }
+
+  final resized = decoded.width > maxDimension || decoded.height > maxDimension
+      ? img.copyResize(
+          decoded,
+          width: decoded.width >= decoded.height ? maxDimension : null,
+          height: decoded.height > decoded.width ? maxDimension : null,
+          interpolation: img.Interpolation.cubic,
+        )
+      : decoded;
+
+  final lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.png')) {
+    return _PreparedImagePayload(
+      bytes: Uint8List.fromList(img.encodePng(resized, level: 6)),
+      fileName: _replaceFileExtension(fileName, 'png'),
+      contentType: 'image/png',
+    );
+  }
+
+  return _PreparedImagePayload(
+    bytes: Uint8List.fromList(img.encodeJpg(resized, quality: jpegQuality)),
+    fileName: _replaceFileExtension(fileName, 'jpg'),
+    contentType: 'image/jpeg',
+  );
+}
+
+String _replaceFileExtension(String fileName, String extension) {
+  final trimmed = fileName.trim();
+  final dotIndex = trimmed.lastIndexOf('.');
+  final baseName = dotIndex <= 0 ? trimmed : trimmed.substring(0, dotIndex);
+  return '$baseName.$extension';
 }
