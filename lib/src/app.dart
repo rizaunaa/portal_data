@@ -2376,26 +2376,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _chatMessageController,
-                            minLines: 1,
-                            maxLines: 4,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _sendGlobalChatMessage(),
-                            decoration: const InputDecoration(
-                              labelText: 'Tulis pesan ke semua user',
-                              hintText:
-                                  'Contoh: Barang baru sudah masuk gudang.',
-                              prefixIcon: Icon(Icons.chat_outlined),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isCompactComposer = constraints.maxWidth < 520;
+                        final sendButton = FilledButton.icon(
                           onPressed: _isSendingChatMessage
                               ? null
                               : _sendGlobalChatMessage,
@@ -2409,8 +2393,41 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                 )
                               : const Icon(Icons.send_outlined),
                           label: const Text('Kirim'),
-                        ),
-                      ],
+                        );
+
+                        final messageField = TextField(
+                          controller: _chatMessageController,
+                          minLines: 1,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendGlobalChatMessage(),
+                          decoration: const InputDecoration(
+                            labelText: 'Tulis pesan ke semua user',
+                            hintText: 'Contoh: Barang baru sudah masuk gudang.',
+                            prefixIcon: Icon(Icons.chat_outlined),
+                          ),
+                        );
+
+                        if (isCompactComposer) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              messageField,
+                              const SizedBox(height: 12),
+                              sendButton,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(child: messageField),
+                            const SizedBox(width: 12),
+                            sendButton,
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
