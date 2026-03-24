@@ -239,6 +239,45 @@ class _AuthPageState extends State<AuthPage> {
     });
   }
 
+  Future<void> _continueAsGuest() async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      await _repository.signInAsGuest();
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'), backgroundColor: Colors.red.shade700),
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+    });
+  }
+
   String? _validateEmail(String? value) {
     final email = value?.trim() ?? '';
     if (email.isEmpty) {
@@ -426,6 +465,17 @@ class _AuthPageState extends State<AuthPage> {
                           ),
                         ),
                       ),
+                      if (!_isRegisterMode) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isSubmitting ? null : _continueAsGuest,
+                            icon: const Icon(Icons.person_outline),
+                            label: const Text('Masuk sebagai tamu'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

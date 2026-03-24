@@ -146,6 +146,10 @@ class EmployeeRepository {
     );
   }
 
+  Future<AuthResponse> signInAsGuest() {
+    return supabaseClient.auth.signInAnonymously();
+  }
+
   Future<AuthResponse> signUpWithEmail({
     required String email,
     required String password,
