@@ -2083,58 +2083,92 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        runSpacing: 12,
-                        spacing: 12,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Data Pegawai',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
+                      isWide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Data Pegawai',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Semua perubahan sekarang tersimpan di Supabase.',
-                                style: TextStyle(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(
-                            width: isWide ? 320 : double.infinity,
-                            child: TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText: 'Cari nama, NIP, jabatan, unit...',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIconConstraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                                suffixIcon: Visibility(
-                                  visible: _searchQuery.isNotEmpty,
-                                  maintainAnimation: true,
-                                  maintainSize: true,
-                                  maintainState: true,
-                                  child: IconButton(
-                                    onPressed: _searchController.clear,
-                                    icon: const Icon(Icons.close),
+                                const Spacer(),
+                                SizedBox(
+                                  width: 320,
+                                  child: TextField(
+                                    controller: _searchController,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Cari nama, NIP, jabatan, unit...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIconConstraints:
+                                          const BoxConstraints(
+                                        minWidth: 48,
+                                        minHeight: 48,
+                                      ),
+                                      suffixIcon: Visibility(
+                                        visible: _searchQuery.isNotEmpty,
+                                        maintainAnimation: true,
+                                        maintainSize: true,
+                                        maintainState: true,
+                                        child: IconButton(
+                                          onPressed: _searchController.clear,
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Data Pegawai',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: TextField(
+                                    controller: _searchController,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Cari nama, NIP, jabatan, unit...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIconConstraints:
+                                          const BoxConstraints(
+                                        minWidth: 48,
+                                        minHeight: 48,
+                                      ),
+                                      suffixIcon: Visibility(
+                                        visible: _searchQuery.isNotEmpty,
+                                        maintainAnimation: true,
+                                        maintainSize: true,
+                                        maintainState: true,
+                                        child: IconButton(
+                                          onPressed: _searchController.clear,
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 20),
                       ConstrainedBox(
                         constraints: BoxConstraints(
@@ -2697,59 +2731,106 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        runSpacing: 12,
-                        spacing: 12,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Daftar Barang',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
+                      isWide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Daftar Barang',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Kelola inventaris barang kantor pada satu tempat.',
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Kelola inventaris barang kantor pada satu tempat.',
-                                style: TextStyle(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(
-                            width: isWide ? 320 : double.infinity,
-                            child: TextField(
-                              controller: _itemSearchController,
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Cari nama, kode, kategori, lokasi...',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIconConstraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                                suffixIcon: Visibility(
-                                  visible: _itemSearchQuery.isNotEmpty,
-                                  maintainAnimation: true,
-                                  maintainSize: true,
-                                  maintainState: true,
-                                  child: IconButton(
-                                    onPressed: _itemSearchController.clear,
-                                    icon: const Icon(Icons.close),
+                                const Spacer(),
+                                SizedBox(
+                                  width: 320,
+                                  child: TextField(
+                                    controller: _itemSearchController,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Cari nama, kode, kategori, lokasi...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIconConstraints:
+                                          const BoxConstraints(
+                                        minWidth: 48,
+                                        minHeight: 48,
+                                      ),
+                                      suffixIcon: Visibility(
+                                        visible: _itemSearchQuery.isNotEmpty,
+                                        maintainAnimation: true,
+                                        maintainSize: true,
+                                        maintainState: true,
+                                        child: IconButton(
+                                          onPressed: _itemSearchController.clear,
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Daftar Barang',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Kelola inventaris barang kantor pada satu tempat.',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: TextField(
+                                    controller: _itemSearchController,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Cari nama, kode, kategori, lokasi...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIconConstraints:
+                                          const BoxConstraints(
+                                        minWidth: 48,
+                                        minHeight: 48,
+                                      ),
+                                      suffixIcon: Visibility(
+                                        visible: _itemSearchQuery.isNotEmpty,
+                                        maintainAnimation: true,
+                                        maintainSize: true,
+                                        maintainState: true,
+                                        child: IconButton(
+                                          onPressed: _itemSearchController.clear,
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 20),
                       ConstrainedBox(
                         constraints: BoxConstraints(
