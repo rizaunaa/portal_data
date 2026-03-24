@@ -1720,158 +1720,163 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   }
 
   Widget _buildChatSection({required ColorScheme colorScheme}) {
-    return SingleChildScrollView(
+    return Padding(
       key: const ValueKey('chat-section'),
       padding: const EdgeInsets.all(20),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1180),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Chat Global',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: colorScheme.onSurface,
+          child: SizedBox.expand(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Chat Global',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Semua user bisa mengirim pesan ke ruang chat bersama ini secara real-time.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 8),
+                    Text(
+                      'Semua user bisa mengirim pesan ke ruang chat bersama ini secara real-time.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: colorScheme.outlineVariant),
-                    ),
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      runSpacing: 12,
-                      spacing: 12,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: colorScheme.primaryContainer,
-                              child: Icon(
-                                Icons.public_outlined,
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Ruang Bersama',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: colorScheme.onSurface,
-                                  ),
-                                ),
-                                Text(
-                                  'Nama pengirim: $_currentChatDisplayName',
-                                  style: TextStyle(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Text(
-                          '${_chatMessages.length} pesan',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    height: 520,
-                    width: double.infinity,
-                    child: Container(
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: colorScheme.surface,
+                        color: colorScheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: colorScheme.outlineVariant),
                       ),
-                      child: _chatMessages.isEmpty
-                          ? _EmptyChatState(
-                              displayName: _currentChatDisplayName,
-                            )
-                          : ListView.separated(
-                              itemCount: _chatMessages.length,
-                              separatorBuilder: (context, index) =>
-                                  Divider(color: colorScheme.outlineVariant),
-                              itemBuilder: (context, index) {
-                                final message = _chatMessages[index];
-                                final isOwnMessage =
-                                    message.senderUserId ==
-                                    (_repository.currentUser?.id ?? '');
-                                return _ChatMessageTile(
-                                  message: message,
-                                  isOwnMessage: isOwnMessage,
-                                );
-                              },
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        runSpacing: 12,
+                        spacing: 12,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: colorScheme.primaryContainer,
+                                child: Icon(
+                                  Icons.public_outlined,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Ruang Bersama',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Nama pengirim: $_currentChatDisplayName',
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${_chatMessages.length} pesan',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
                             ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _chatMessageController,
-                          minLines: 1,
-                          maxLines: 4,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _sendGlobalChatMessage(),
-                          decoration: const InputDecoration(
-                            labelText: 'Tulis pesan ke semua user',
-                            hintText: 'Contoh: Barang baru sudah masuk gudang.',
-                            prefixIcon: Icon(Icons.chat_outlined),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: colorScheme.outlineVariant),
+                        ),
+                        child: _chatMessages.isEmpty
+                            ? _EmptyChatState(
+                                displayName: _currentChatDisplayName,
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                itemCount: _chatMessages.length,
+                                separatorBuilder: (context, index) =>
+                                    Divider(color: colorScheme.outlineVariant),
+                                itemBuilder: (context, index) {
+                                  final message = _chatMessages[index];
+                                  final isOwnMessage =
+                                      message.senderUserId ==
+                                      (_repository.currentUser?.id ?? '');
+                                  return _ChatMessageTile(
+                                    message: message,
+                                    isOwnMessage: isOwnMessage,
+                                  );
+                                },
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _chatMessageController,
+                            minLines: 1,
+                            maxLines: 4,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _sendGlobalChatMessage(),
+                            decoration: const InputDecoration(
+                              labelText: 'Tulis pesan ke semua user',
+                              hintText:
+                                  'Contoh: Barang baru sudah masuk gudang.',
+                              prefixIcon: Icon(Icons.chat_outlined),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: _isSendingChatMessage
-                            ? null
-                            : _sendGlobalChatMessage,
-                        icon: _isSendingChatMessage
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.send_outlined),
-                        label: const Text('Kirim'),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 12),
+                        FilledButton.icon(
+                          onPressed: _isSendingChatMessage
+                              ? null
+                              : _sendGlobalChatMessage,
+                          icon: _isSendingChatMessage
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.send_outlined),
+                          label: const Text('Kirim'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
