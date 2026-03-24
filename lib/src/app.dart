@@ -224,7 +224,7 @@ class _CommandBlock extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, employees, items, users }
+enum _HomeSection { dashboard, employees, items, chat, users }
 
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
@@ -709,6 +709,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         return _filteredEmployees.length;
       case _HomeSection.items:
         return _filteredInventoryItems.length;
+      case _HomeSection.chat:
+        return 0;
       case _HomeSection.users:
         return _employeeUsers.length;
     }
@@ -1244,6 +1246,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         return 'Data Pegawai';
       case _HomeSection.items:
         return 'Daftar Barang';
+      case _HomeSection.chat:
+        return 'Chat';
       case _HomeSection.users:
         return 'List User';
     }
@@ -1627,6 +1631,119 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     );
   }
 
+  Widget _buildChatSection({required ColorScheme colorScheme}) {
+    final chats = [
+      (
+        title: 'Admin Inventaris',
+        subtitle: 'Bahas perubahan data dan persetujuan barang',
+        icon: Icons.admin_panel_settings_outlined,
+      ),
+      (
+        title: 'Tim Gudang',
+        subtitle: 'Koordinasi stok, lokasi, dan kondisi barang',
+        icon: Icons.warehouse_outlined,
+      ),
+      (
+        title: 'IT Support',
+        subtitle: 'Bantuan perangkat kantor dan kendala teknis',
+        icon: Icons.support_agent_outlined,
+      ),
+    ];
+
+    return SingleChildScrollView(
+      key: const ValueKey('chat-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Menu Chat',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Pilih ruang chat untuk koordinasi kebutuhan inventaris dan operasional.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: chats.map((chat) {
+                      return SizedBox(
+                        width: 280,
+                        child: Material(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => _showMessage(
+                              'Ruang chat "${chat.title}" siap dibuka.',
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.primary.withValues(
+                                        alpha: 0.10,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Icon(
+                                      chat.icon,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    chat.title,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    chat.subtitle,
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildItemsSection({
     required ColorScheme colorScheme,
     required bool isDark,
@@ -1967,6 +2084,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     startItem: startItem,
                                     endItem: endItem,
                                   )
+                                : _selectedSection == _HomeSection.chat
+                                ? _buildChatSection(
+                                    colorScheme: colorScheme,
+                                  )
                                 : _buildUsersSection(
                                     colorScheme: colorScheme,
                                     employeeUsers: employeeUsers,
@@ -2075,6 +2196,13 @@ class _HomeSidebar extends StatelessWidget {
                 label: 'Daftar Barang',
                 selected: selectedSection == _HomeSection.items,
                 onTap: () => onSelectSection(_HomeSection.items),
+              ),
+              const SizedBox(height: 8),
+              _SidebarItem(
+                icon: Icons.chat_bubble_outline,
+                label: 'Chat',
+                selected: selectedSection == _HomeSection.chat,
+                onTap: () => onSelectSection(_HomeSection.chat),
               ),
               const SizedBox(height: 8),
               _SidebarItem(
