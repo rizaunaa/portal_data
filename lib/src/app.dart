@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/employee.dart';
 import 'models/global_chat_message.dart';
 import 'models/inventory_item.dart';
+import 'models/user_profile.dart';
 import 'services/employee_repository.dart';
 import 'supabase_bootstrap.dart';
 import 'update/app_update_widgets.dart';
@@ -147,6 +148,8 @@ class AuthPage extends StatefulWidget {
 class _AuthPageState extends State<AuthPage> {
   final EmployeeRepository _repository = const EmployeeRepository();
   final _formKey = GlobalKey<FormState>();
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isRegisterMode = false;
@@ -155,6 +158,8 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   void dispose() {
+    _fullNameController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -171,10 +176,25 @@ class _AuthPageState extends State<AuthPage> {
 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+    final fullName = _fullNameController.text.trim();
+    final username = _usernameController.text.trim().toLowerCase();
 
     try {
       if (_isRegisterMode) {
-        await _repository.signUpWithEmail(email: email, password: password);
+        final response = await _repository.signUpWithEmail(
+          email: email,
+          password: password,
+          userData: {'full_name': fullName, 'username': username},
+        );
+        final user = response.user;
+        if (user != null) {
+          await _repository.createUserProfile(
+            userId: user.id,
+            email: email,
+            fullName: fullName,
+            username: username,
+          );
+        }
         if (!mounted) {
           return;
         }
@@ -241,6 +261,37 @@ class _AuthPageState extends State<AuthPage> {
     return null;
   }
 
+  String? _validateFullName(String? value) {
+    if (!_isRegisterMode) {
+      return null;
+    }
+    final fullName = value?.trim() ?? '';
+    if (fullName.isEmpty) {
+      return 'Nama lengkap wajib diisi';
+    }
+    if (fullName.length < 3) {
+      return 'Nama lengkap minimal 3 karakter';
+    }
+    return null;
+  }
+
+  String? _validateUsername(String? value) {
+    if (!_isRegisterMode) {
+      return null;
+    }
+    final username = value?.trim() ?? '';
+    if (username.isEmpty) {
+      return 'Username wajib diisi';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(username)) {
+      return 'Username hanya boleh huruf, angka, dan underscore';
+    }
+    if (username.length < 3) {
+      return 'Username minimal 3 karakter';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -289,6 +340,26 @@ class _AuthPageState extends State<AuthPage> {
                         style: TextStyle(color: colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 24),
+                      if (_isRegisterMode) ...[
+                        TextFormField(
+                          controller: _fullNameController,
+                          validator: _validateFullName,
+                          decoration: const InputDecoration(
+                            labelText: 'Nama Lengkap',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _usernameController,
+                          validator: _validateUsername,
+                          decoration: const InputDecoration(
+                            labelText: 'Username',
+                            prefixIcon: Icon(Icons.alternate_email_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -472,7 +543,7 @@ class _CommandBlock extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, employees, items, chat, users }
+enum _HomeSection { dashboard, employees, items, chat, profile, users }
 
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
@@ -503,6 +574,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   int _currentPage = 0;
   _HomeSection _selectedSection = _HomeSection.dashboard;
   EmployeeDashboardStats? _dashboardStats;
+  UserProfile? _currentUserProfile;
   List<EmployeeUserActivity> _employeeUsers = const [];
   List<DataAccessRequestNotification> _incomingRequests = const [];
   RealtimeChannel? _employeesRealtimeChannel;
@@ -580,12 +652,14 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       final employeesFuture = _repository.fetchEmployees();
       final inventoryItemsFuture = _repository.fetchInventoryItems();
       final chatMessagesFuture = _repository.fetchGlobalChatMessages();
+      final currentUserProfileFuture = _repository.ensureCurrentUserProfile();
       final dashboardStatsFuture = _repository.fetchDashboardStats();
       final employeeUsersFuture = _repository.fetchEmployeeUsers();
       final incomingRequestsFuture = _repository.fetchIncomingAccessRequests();
       final employees = await employeesFuture;
       final inventoryItems = await inventoryItemsFuture;
       List<GlobalChatMessage>? chatMessages;
+      UserProfile? currentUserProfile;
       EmployeeDashboardStats? dashboardStats;
       List<EmployeeUserActivity>? employeeUsers;
       List<DataAccessRequestNotification>? incomingRequests;
@@ -594,6 +668,12 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         chatMessages = await chatMessagesFuture;
       } catch (_) {
         chatMessages = _chatMessages;
+      }
+
+      try {
+        currentUserProfile = await currentUserProfileFuture;
+      } catch (_) {
+        currentUserProfile = _currentUserProfile;
       }
 
       try {
@@ -627,6 +707,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _chatMessages
           ..clear()
           ..addAll(chatMessages ?? const []);
+        _currentUserProfile = currentUserProfile;
         _dashboardStats = dashboardStats;
         _employeeUsers = employeeUsers ?? const [];
         _incomingRequests = incomingRequests ?? const [];
@@ -980,6 +1061,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       case _HomeSection.items:
         return _filteredInventoryItems.length;
       case _HomeSection.chat:
+        return 0;
+      case _HomeSection.profile:
         return 0;
       case _HomeSection.users:
         return _employeeUsers.length;
@@ -1589,6 +1672,79 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }
   }
 
+  Future<void> _openProfileEditor() async {
+    var profile = _currentUserProfile;
+    final currentUser = _repository.currentUser;
+    if (profile == null && currentUser != null) {
+      try {
+        profile = await _repository.ensureCurrentUserProfile();
+        if (mounted) {
+          setState(() {
+            _currentUserProfile = profile;
+          });
+        }
+      } catch (error) {
+        _showMessage('$error', isError: true);
+      }
+    }
+
+    if (profile == null || currentUser == null) {
+      _showMessage('Profil akun belum tersedia.', isError: true);
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final activeProfile = profile;
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _ProfileEditDialog(profile: activeProfile),
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final updatedProfile = await _repository.updateCurrentUserProfile(
+        email: currentUser.email ?? profile.email,
+        fullName: result['full_name'] ?? profile.fullName,
+        username: result['username'] ?? profile.username,
+        role: profile.role,
+        photoUrl: profile.photoUrl,
+        settings: profile.settings,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentUserProfile = updatedProfile;
+      });
+      _showMessage('Profil akun berhasil diperbarui.');
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage('$error', isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = false;
+    });
+  }
+
   Future<void> _refreshChatMessages() async {
     try {
       final shouldAutoScroll = _isChatNearBottom();
@@ -1632,6 +1788,16 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   }
 
   String get _currentChatDisplayName {
+    final profile = _currentUserProfile;
+    if (profile != null) {
+      if (profile.fullName.trim().isNotEmpty) {
+        return profile.fullName.trim();
+      }
+      if (profile.username.trim().isNotEmpty) {
+        return '@${profile.username.trim()}';
+      }
+    }
+
     final userId = _repository.currentUser?.id ?? '';
     return userId.isEmpty ? 'user-unknown' : userId;
   }
@@ -1681,6 +1847,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         return 'Daftar Barang';
       case _HomeSection.chat:
         return 'Chat';
+      case _HomeSection.profile:
+        return 'Profil Akun';
       case _HomeSection.users:
         return 'List User';
     }
@@ -2251,6 +2419,144 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     );
   }
 
+  Widget _buildProfileSection({required ColorScheme colorScheme}) {
+    final profile = _currentUserProfile;
+    final currentUser = _repository.currentUser;
+
+    return SingleChildScrollView(
+      key: const ValueKey('profile-section'),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: profile == null
+              ? Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Profil akun belum tersedia. Coba refresh atau login ulang.',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Profil Akun',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Kelola identitas akun untuk portal, chat, dan hak akses.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.start,
+                          spacing: 24,
+                          runSpacing: 24,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 34,
+                                  child: Text(
+                                    profile.fullName.trim().isEmpty
+                                        ? profile.username
+                                              .trim()
+                                              .characters
+                                              .take(1)
+                                              .toString()
+                                              .toUpperCase()
+                                        : profile.fullName
+                                              .trim()
+                                              .characters
+                                              .take(1)
+                                              .toString()
+                                              .toUpperCase(),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      profile.fullName,
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '@${profile.username}',
+                                      style: TextStyle(
+                                        color: colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      currentUser?.email ?? profile.email,
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            FilledButton.icon(
+                              onPressed: _isSaving ? null : _openProfileEditor,
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('Edit Profil'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        _ProfileInfoCard(
+                          label: 'Nama Lengkap',
+                          value: profile.fullName,
+                        ),
+                        _ProfileInfoCard(
+                          label: 'Username',
+                          value: '@${profile.username}',
+                        ),
+                        _ProfileInfoCard(label: 'Role', value: profile.role),
+                        _ProfileInfoCard(
+                          label: 'Email',
+                          value: currentUser?.email ?? profile.email,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildItemsSection({
     required ColorScheme colorScheme,
     required bool isDark,
@@ -2604,6 +2910,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                   )
                                 : _selectedSection == _HomeSection.chat
                                 ? _buildChatSection(colorScheme: colorScheme)
+                                : _selectedSection == _HomeSection.profile
+                                ? _buildProfileSection(colorScheme: colorScheme)
                                 : _buildUsersSection(
                                     colorScheme: colorScheme,
                                     employeeUsers: employeeUsers,
@@ -2717,6 +3025,13 @@ class _HomeSidebar extends StatelessWidget {
                 label: 'Chat',
                 selected: selectedSection == _HomeSection.chat,
                 onTap: () => onSelectSection(_HomeSection.chat),
+              ),
+              const SizedBox(height: 8),
+              _SidebarItem(
+                icon: Icons.account_circle_outlined,
+                label: 'Profil',
+                selected: selectedSection == _HomeSection.profile,
+                onTap: () => onSelectSection(_HomeSection.profile),
               ),
               const SizedBox(height: 8),
               _SidebarItem(
@@ -2923,6 +3238,156 @@ class _ChatMessageTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProfileInfoCard extends StatelessWidget {
+  const _ProfileInfoCard({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      width: 240,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileEditDialog extends StatefulWidget {
+  const _ProfileEditDialog({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  State<_ProfileEditDialog> createState() => _ProfileEditDialogState();
+}
+
+class _ProfileEditDialogState extends State<_ProfileEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _fullNameController;
+  late final TextEditingController _usernameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _fullNameController = TextEditingController(text: widget.profile.fullName);
+    _usernameController = TextEditingController(text: widget.profile.username);
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  String? _validateFullName(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return 'Nama lengkap wajib diisi';
+    }
+    if (text.length < 3) {
+      return 'Nama lengkap minimal 3 karakter';
+    }
+    return null;
+  }
+
+  String? _validateUsername(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) {
+      return 'Username wajib diisi';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(text)) {
+      return 'Username hanya boleh huruf, angka, dan underscore';
+    }
+    if (text.length < 3) {
+      return 'Username minimal 3 karakter';
+    }
+    return null;
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    Navigator.of(context).pop({
+      'full_name': _fullNameController.text.trim(),
+      'username': _usernameController.text.trim().toLowerCase(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Profil'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _fullNameController,
+                validator: _validateFullName,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Lengkap',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _usernameController,
+                validator: _validateUsername,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  prefixIcon: Icon(Icons.alternate_email_outlined),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Batal'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Simpan')),
+      ],
     );
   }
 }

@@ -34,11 +34,44 @@ create table if not exists public.inventory_items (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null default '',
+  full_name text not null default '',
+  username text not null,
+  role text not null default 'staff' check (role in ('admin', 'staff')),
+  photo_url text not null default '',
+  settings jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.employees
   add column if not exists photo_url text not null default '';
 
 alter table public.inventory_items
   add column if not exists photo_url text not null default '';
+
+alter table public.profiles
+  add column if not exists email text not null default '';
+
+alter table public.profiles
+  add column if not exists full_name text not null default '';
+
+alter table public.profiles
+  add column if not exists username text not null default '';
+
+alter table public.profiles
+  add column if not exists role text not null default 'staff';
+
+alter table public.profiles
+  add column if not exists photo_url text not null default '';
+
+alter table public.profiles
+  add column if not exists settings jsonb not null default '{}'::jsonb;
+
+alter table public.profiles
+  add column if not exists updated_at timestamptz not null default timezone('utc', now());
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -104,6 +137,9 @@ create unique index if not exists employees_user_nip_idx
 
 create unique index if not exists inventory_items_user_code_idx
   on public.inventory_items (user_id, item_code);
+
+create unique index if not exists profiles_username_idx
+  on public.profiles (lower(username));
 
 create or replace function public.validate_employee_uniqueness()
 returns trigger
@@ -182,6 +218,7 @@ create index if not exists global_chat_messages_created_at_idx
 
 alter table public.employees enable row level security;
 alter table public.inventory_items enable row level security;
+alter table public.profiles enable row level security;
 alter table public.employee_data_access_requests enable row level security;
 alter table public.portal_realtime_events enable row level security;
 alter table public.global_chat_messages enable row level security;
@@ -571,6 +608,15 @@ for select
 to authenticated, anon
 using (auth.uid() = user_id);
 
+drop policy if exists "users_can_select_own_profile"
+on public.profiles;
+
+create policy "users_can_select_own_profile"
+on public.profiles
+for select
+to authenticated, anon
+using (auth.uid() = id);
+
 drop policy if exists "users_can_insert_own_employees"
 on public.employees;
 
@@ -588,6 +634,15 @@ on public.inventory_items
 for insert
 to authenticated, anon
 with check (auth.uid() = user_id);
+
+drop policy if exists "users_can_insert_own_profile"
+on public.profiles;
+
+create policy "users_can_insert_own_profile"
+on public.profiles
+for insert
+to authenticated, anon
+with check (auth.uid() = id);
 
 drop policy if exists "users_can_update_own_employees"
 on public.employees;
@@ -608,6 +663,16 @@ for update
 to authenticated, anon
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+drop policy if exists "users_can_update_own_profile"
+on public.profiles;
+
+create policy "users_can_update_own_profile"
+on public.profiles
+for update
+to authenticated, anon
+using (auth.uid() = id)
+with check (auth.uid() = id);
 
 drop policy if exists "users_can_delete_own_employees"
 on public.employees;

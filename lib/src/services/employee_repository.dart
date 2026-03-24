@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/employee.dart';
 import '../models/global_chat_message.dart';
 import '../models/inventory_item.dart';
+import '../models/user_profile.dart';
 import '../supabase_bootstrap.dart';
 
 class EmployeeDashboardStats {
@@ -148,12 +149,144 @@ class EmployeeRepository {
   Future<AuthResponse> signUpWithEmail({
     required String email,
     required String password,
+    Map<String, dynamic>? userData,
   }) {
-    return supabaseClient.auth.signUp(email: email, password: password);
+    return supabaseClient.auth.signUp(
+      email: email,
+      password: password,
+      data: userData,
+    );
   }
 
   Future<void> signOut() {
     return supabaseClient.auth.signOut();
+  }
+
+  Future<void> createUserProfile({
+    required String userId,
+    required String email,
+    required String fullName,
+    required String username,
+    String role = 'staff',
+    String photoUrl = '',
+    Map<String, dynamic> settings = const {},
+  }) async {
+    await supabaseClient.from('profiles').upsert({
+      ...UserProfile(
+        id: userId,
+        email: email,
+        fullName: fullName,
+        username: username,
+        role: role,
+        photoUrl: photoUrl,
+        settings: settings,
+        createdAt: DateTime.now().toUtc(),
+        updatedAt: DateTime.now().toUtc(),
+      ).toInsertMap(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  Future<UserProfile?> fetchCurrentUserProfile() async {
+    await ensureSignedIn();
+
+    final userId = currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    final response = await supabaseClient
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return UserProfile.fromMap(response);
+  }
+
+  Future<UserProfile> ensureCurrentUserProfile() async {
+    await ensureSignedIn();
+
+    final user = currentUser;
+    if (user == null) {
+      throw const AuthException('User belum terautentikasi.');
+    }
+
+    final existingProfile = await fetchCurrentUserProfile();
+    if (existingProfile != null) {
+      return existingProfile;
+    }
+
+    final email = user.email ?? '';
+    final metadata = user.userMetadata ?? const {};
+    final fullName = (metadata['full_name'] as String?)?.trim() ?? '';
+    final usernameFromMetadata =
+        (metadata['username'] as String?)?.trim() ?? '';
+    final emailLocalPart = email.contains('@') ? email.split('@').first : '';
+    final fallbackUsernameSource = usernameFromMetadata.isNotEmpty
+        ? usernameFromMetadata
+        : (emailLocalPart.isNotEmpty
+              ? emailLocalPart
+              : user.id.substring(0, 8));
+    final sanitizedUsername = fallbackUsernameSource.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9_]'),
+      '_',
+    );
+
+    await createUserProfile(
+      userId: user.id,
+      email: email,
+      fullName: fullName.isEmpty ? sanitizedUsername : fullName,
+      username: sanitizedUsername.isEmpty
+          ? 'user_${user.id.substring(0, 8)}'
+          : sanitizedUsername,
+    );
+
+    final createdProfile = await fetchCurrentUserProfile();
+    if (createdProfile == null) {
+      throw const PostgrestException(
+        message: 'Profil akun gagal dibuat secara otomatis.',
+      );
+    }
+
+    return createdProfile;
+  }
+
+  Future<UserProfile> updateCurrentUserProfile({
+    required String email,
+    required String fullName,
+    required String username,
+    required String role,
+    required String photoUrl,
+    required Map<String, dynamic> settings,
+  }) async {
+    await ensureSignedIn();
+
+    final userId = currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      throw const AuthException('User belum terautentikasi.');
+    }
+
+    final response = await supabaseClient
+        .from('profiles')
+        .update({
+          'email': email,
+          'full_name': fullName,
+          'username': username,
+          'role': role,
+          'photo_url': photoUrl,
+          'settings': settings,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+    return UserProfile.fromMap(response);
   }
 
   Future<List<Employee>> fetchEmployees() async {
