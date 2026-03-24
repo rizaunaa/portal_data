@@ -1,11 +1,10 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/employee.dart';
+import '../models/global_chat_message.dart';
 import '../models/inventory_item.dart';
 import '../supabase_bootstrap.dart';
 
@@ -105,7 +104,8 @@ class DataAccessRequestNotification {
       requesterUserId: map['requester_user_id'] as String? ?? '',
       targetUserId: map['target_user_id'] as String? ?? '',
       status: map['status'] as String? ?? 'pending',
-      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       respondedAt: map['responded_at'] == null
           ? null
@@ -159,6 +159,47 @@ class EmployeeRepository {
         .toList();
   }
 
+  Future<List<GlobalChatMessage>> fetchGlobalChatMessages() async {
+    await ensureSignedIn();
+
+    final response = await supabaseClient
+        .from('global_chat_messages')
+        .select()
+        .order('created_at', ascending: true);
+
+    return (response as List<dynamic>)
+        .map((item) => GlobalChatMessage.fromMap(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<GlobalChatMessage> sendGlobalChatMessage({
+    required String senderName,
+    required String message,
+  }) async {
+    await ensureSignedIn();
+
+    final userId = currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      throw const AuthException('User belum terautentikasi.');
+    }
+
+    final response = await supabaseClient
+        .from('global_chat_messages')
+        .insert(
+          GlobalChatMessage(
+            id: '',
+            senderUserId: userId,
+            senderName: senderName,
+            message: message,
+            createdAt: DateTime.now().toUtc(),
+          ).toInsertMap(),
+        )
+        .select()
+        .single();
+
+    return GlobalChatMessage.fromMap(response);
+  }
+
   Future<EmployeeDashboardStats> fetchDashboardStats() async {
     await ensureSignedIn();
 
@@ -173,7 +214,9 @@ class EmployeeRepository {
     final response = await supabaseClient.rpc('employee_users_list');
 
     return (response as List<dynamic>)
-        .map((item) => EmployeeUserActivity.fromMap(item as Map<String, dynamic>))
+        .map(
+          (item) => EmployeeUserActivity.fromMap(item as Map<String, dynamic>),
+        )
         .toList();
   }
 
@@ -195,10 +238,13 @@ class EmployeeRepository {
     );
   }
 
-  Future<List<DataAccessRequestNotification>> fetchIncomingAccessRequests() async {
+  Future<List<DataAccessRequestNotification>>
+  fetchIncomingAccessRequests() async {
     await ensureSignedIn();
 
-    final response = await supabaseClient.rpc('incoming_employee_access_requests');
+    final response = await supabaseClient.rpc(
+      'incoming_employee_access_requests',
+    );
 
     return (response as List<dynamic>)
         .map(
@@ -216,10 +262,7 @@ class EmployeeRepository {
     await ensureSignedIn();
     await supabaseClient.rpc(
       'respond_employee_data_access_request',
-      params: {
-        'request_id_input': requestId,
-        'approve_input': approve,
-      },
+      params: {'request_id_input': requestId, 'approve_input': approve},
     );
   }
 
@@ -233,7 +276,9 @@ class EmployeeRepository {
     );
   }
 
-  Future<List<Employee>> fetchSharedEmployees({required String ownerUserId}) async {
+  Future<List<Employee>> fetchSharedEmployees({
+    required String ownerUserId,
+  }) async {
     await ensureSignedIn();
 
     final response = await supabaseClient.rpc(
@@ -351,10 +396,8 @@ class EmployeeRepository {
       '_',
     );
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final objectPath =
-        '$userId/${timestamp}_$safeFileName';
-    final thumbnailObjectPath =
-        '$userId/${timestamp}_$safeThumbnailFileName';
+    final objectPath = '$userId/${timestamp}_$safeFileName';
+    final thumbnailObjectPath = '$userId/${timestamp}_$safeThumbnailFileName';
 
     await supabaseClient.storage
         .from(_employeePhotosBucket)

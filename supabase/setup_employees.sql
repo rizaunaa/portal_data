@@ -169,10 +169,22 @@ create table if not exists public.portal_realtime_events (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.global_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_user_id uuid not null references auth.users (id) on delete cascade,
+  sender_name text not null,
+  message text not null check (char_length(btrim(message)) > 0),
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists global_chat_messages_created_at_idx
+  on public.global_chat_messages (created_at asc);
+
 alter table public.employees enable row level security;
 alter table public.inventory_items enable row level security;
 alter table public.employee_data_access_requests enable row level security;
 alter table public.portal_realtime_events enable row level security;
+alter table public.global_chat_messages enable row level security;
 
 do $$
 begin
@@ -184,6 +196,20 @@ begin
       and tablename = 'employees'
   ) then
     alter publication supabase_realtime add table public.employees;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'global_chat_messages'
+  ) then
+    alter publication supabase_realtime add table public.global_chat_messages;
   end if;
 end;
 $$;
@@ -625,3 +651,24 @@ on public.portal_realtime_events
 for select
 to authenticated, anon
 using (true);
+
+drop policy if exists "global_chat_messages_select_all"
+on public.global_chat_messages;
+
+create policy "global_chat_messages_select_all"
+on public.global_chat_messages
+for select
+to authenticated, anon
+using (true);
+
+drop policy if exists "global_chat_messages_insert_own"
+on public.global_chat_messages;
+
+create policy "global_chat_messages_insert_own"
+on public.global_chat_messages
+for insert
+to authenticated, anon
+with check (
+  auth.uid() = sender_user_id
+  and char_length(btrim(message)) > 0
+);

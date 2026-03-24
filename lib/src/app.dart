@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -8,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/employee.dart';
+import 'models/global_chat_message.dart';
 import 'models/inventory_item.dart';
 import 'services/employee_repository.dart';
 import 'supabase_bootstrap.dart';
@@ -237,13 +236,16 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   final EmployeeRepository _repository = const EmployeeRepository();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _itemSearchController = TextEditingController();
+  final TextEditingController _chatMessageController = TextEditingController();
   final List<Employee> _employees = [];
   final List<InventoryItem> _inventoryItems = [];
+  final List<GlobalChatMessage> _chatMessages = [];
   static const int _pageSize = 10;
 
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isRefreshingData = false;
+  bool _isSendingChatMessage = false;
   String _searchQuery = '';
   String _itemSearchQuery = '';
   String? _errorMessage;
@@ -256,6 +258,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   RealtimeChannel? _accessRequesterRealtimeChannel;
   RealtimeChannel? _accessTargetRealtimeChannel;
   RealtimeChannel? _portalEventsRealtimeChannel;
+  RealtimeChannel? _chatRealtimeChannel;
   Timer? _realtimeRefreshDebounce;
   bool _pendingRealtimeRefresh = false;
   String? _subscribedUserId;
@@ -303,6 +306,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     _disposeRealtimeSubscriptions();
     _searchController.dispose();
     _itemSearchController.dispose();
+    _chatMessageController.dispose();
     super.dispose();
   }
 
@@ -321,14 +325,22 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     try {
       final employeesFuture = _repository.fetchEmployees();
       final inventoryItemsFuture = _repository.fetchInventoryItems();
+      final chatMessagesFuture = _repository.fetchGlobalChatMessages();
       final dashboardStatsFuture = _repository.fetchDashboardStats();
       final employeeUsersFuture = _repository.fetchEmployeeUsers();
       final incomingRequestsFuture = _repository.fetchIncomingAccessRequests();
       final employees = await employeesFuture;
       final inventoryItems = await inventoryItemsFuture;
+      List<GlobalChatMessage>? chatMessages;
       EmployeeDashboardStats? dashboardStats;
       List<EmployeeUserActivity>? employeeUsers;
       List<DataAccessRequestNotification>? incomingRequests;
+
+      try {
+        chatMessages = await chatMessagesFuture;
+      } catch (_) {
+        chatMessages = _chatMessages;
+      }
 
       try {
         dashboardStats = await dashboardStatsFuture;
@@ -358,6 +370,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _inventoryItems
           ..clear()
           ..addAll(inventoryItems);
+        _chatMessages
+          ..clear()
+          ..addAll(chatMessages ?? const []);
         _dashboardStats = dashboardStats;
         _employeeUsers = employeeUsers ?? const [];
         _incomingRequests = incomingRequests ?? const [];
@@ -798,7 +813,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _employeesRealtimeChannel != null &&
         _accessRequesterRealtimeChannel != null &&
         _accessTargetRealtimeChannel != null &&
-        _portalEventsRealtimeChannel != null) {
+        _portalEventsRealtimeChannel != null &&
+        _chatRealtimeChannel != null) {
       return;
     }
 
@@ -934,12 +950,21 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
             status: _formatRealtimeStatus(status, error),
           );
         });
+
+    _chatRealtimeChannel = supabaseClient
+        .channel('public:global_chat_messages:all')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'global_chat_messages',
+          callback: (_) {
+            _refreshChatMessages();
+          },
+        )
+        .subscribe();
   }
 
-  void _updateRealtimeStatus({
-    required String key,
-    required String status,
-  }) {
+  void _updateRealtimeStatus({required String key, required String status}) {
     if (!mounted) {
       return;
     }
@@ -949,10 +974,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
   }
 
-  void _recordRealtimeEvent({
-    required String key,
-    required String summary,
-  }) {
+  void _recordRealtimeEvent({required String key, required String summary}) {
     if (!mounted) {
       return;
     }
@@ -964,10 +986,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     });
   }
 
-  String _formatRealtimeStatus(
-    RealtimeSubscribeStatus status,
-    Object? error,
-  ) {
+  String _formatRealtimeStatus(RealtimeSubscribeStatus status, Object? error) {
     switch (status) {
       case RealtimeSubscribeStatus.subscribed:
         return 'subscribed';
@@ -985,11 +1004,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     final requesterChannel = _accessRequesterRealtimeChannel;
     final targetChannel = _accessTargetRealtimeChannel;
     final hubChannel = _portalEventsRealtimeChannel;
+    final chatChannel = _chatRealtimeChannel;
 
     _employeesRealtimeChannel = null;
     _accessRequesterRealtimeChannel = null;
     _accessTargetRealtimeChannel = null;
     _portalEventsRealtimeChannel = null;
+    _chatRealtimeChannel = null;
     _subscribedUserId = null;
     _realtimeStatuses['employees'] = 'belum tersambung';
     _realtimeStatuses['requester'] = 'belum tersambung';
@@ -1016,6 +1037,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     }
     if (hubChannel != null) {
       supabaseClient.removeChannel(hubChannel);
+    }
+    if (chatChannel != null) {
+      supabaseClient.removeChannel(chatChannel);
     }
   }
 
@@ -1236,6 +1260,70 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         },
       ),
     );
+  }
+
+  Future<void> _refreshChatMessages() async {
+    try {
+      final messages = await _repository.fetchGlobalChatMessages();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _chatMessages
+          ..clear()
+          ..addAll(messages);
+      });
+    } catch (_) {
+      // Keep the latest messages if chat refresh fails temporarily.
+    }
+  }
+
+  String get _currentChatDisplayName {
+    for (final employee in _employees) {
+      final name = employee.name.trim();
+      if (name.isNotEmpty) {
+        return name;
+      }
+    }
+
+    final userId = _repository.currentUser?.id ?? '';
+    final shortUserId = userId.length <= 8 ? userId : userId.substring(0, 8);
+    return shortUserId.isEmpty ? 'User Portal' : 'User $shortUserId';
+  }
+
+  Future<void> _sendGlobalChatMessage() async {
+    final text = _chatMessageController.text.trim();
+    if (text.isEmpty || _isSendingChatMessage) {
+      return;
+    }
+
+    setState(() {
+      _isSendingChatMessage = true;
+    });
+
+    try {
+      await _repository.sendGlobalChatMessage(
+        senderName: _currentChatDisplayName,
+        message: text,
+      );
+      _chatMessageController.clear();
+      await _refreshChatMessages();
+    } on PostgrestException catch (error) {
+      _showMessage(error.message, isError: true);
+    } on AuthException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage(error.toString(), isError: true);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSendingChatMessage = false;
+    });
   }
 
   String get _pageTitle {
@@ -1632,24 +1720,6 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   }
 
   Widget _buildChatSection({required ColorScheme colorScheme}) {
-    final chats = [
-      (
-        title: 'Admin Inventaris',
-        subtitle: 'Bahas perubahan data dan persetujuan barang',
-        icon: Icons.admin_panel_settings_outlined,
-      ),
-      (
-        title: 'Tim Gudang',
-        subtitle: 'Koordinasi stok, lokasi, dan kondisi barang',
-        icon: Icons.warehouse_outlined,
-      ),
-      (
-        title: 'IT Support',
-        subtitle: 'Bantuan perangkat kantor dan kendala teknis',
-        icon: Icons.support_agent_outlined,
-      ),
-    ];
-
     return SingleChildScrollView(
       key: const ValueKey('chat-section'),
       padding: const EdgeInsets.all(20),
@@ -1663,7 +1733,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Menu Chat',
+                    'Chat Global',
                     style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
@@ -1672,68 +1742,131 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Pilih ruang chat untuk koordinasi kebutuhan inventaris dan operasional.',
+                    'Semua user bisa mengirim pesan ke ruang chat bersama ini secara real-time.',
                     style: TextStyle(
                       fontSize: 15,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: chats.map((chat) {
-                      return SizedBox(
-                        width: 280,
-                        child: Material(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () => _showMessage(
-                              'Ruang chat "${chat.title}" siap dibuka.',
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(18),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: colorScheme.primary.withValues(
-                                        alpha: 0.10,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Icon(
-                                      chat.icon,
-                                      color: colorScheme.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    chat.title,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    chat.subtitle,
-                                    style: TextStyle(
-                                      color: colorScheme.onSurfaceVariant,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 12,
+                      spacing: 12,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: colorScheme.primaryContainer,
+                              child: Icon(
+                                Icons.public_outlined,
+                                color: colorScheme.onPrimaryContainer,
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ruang Bersama',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                Text(
+                                  'Nama pengirim: $_currentChatDisplayName',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '${_chatMessages.length} pesan',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      );
-                    }).toList(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    constraints: const BoxConstraints(minHeight: 320),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: _chatMessages.isEmpty
+                        ? _EmptyChatState(displayName: _currentChatDisplayName)
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _chatMessages.length,
+                            separatorBuilder: (context, index) =>
+                                Divider(color: colorScheme.outlineVariant),
+                            itemBuilder: (context, index) {
+                              final message = _chatMessages[index];
+                              final isOwnMessage =
+                                  message.senderUserId ==
+                                  (_repository.currentUser?.id ?? '');
+                              return _ChatMessageTile(
+                                message: message,
+                                isOwnMessage: isOwnMessage,
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _chatMessageController,
+                          minLines: 1,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendGlobalChatMessage(),
+                          decoration: const InputDecoration(
+                            labelText: 'Tulis pesan ke semua user',
+                            hintText: 'Contoh: Barang baru sudah masuk gudang.',
+                            prefixIcon: Icon(Icons.chat_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: _isSendingChatMessage
+                            ? null
+                            : _sendGlobalChatMessage,
+                        icon: _isSendingChatMessage
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send_outlined),
+                        label: const Text('Kirim'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1845,7 +1978,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                             child: TextField(
                               controller: _itemSearchController,
                               decoration: InputDecoration(
-                                hintText: 'Cari nama, kode, kategori, lokasi...',
+                                hintText:
+                                    'Cari nama, kode, kategori, lokasi...',
                                 prefixIcon: const Icon(Icons.search),
                                 suffixIconConstraints: const BoxConstraints(
                                   minWidth: 48,
@@ -1881,7 +2015,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     if (isWide)
                                       InventoryItemDataTable(
                                         items: items,
-                                        onViewDetails: _showInventoryItemDetails,
+                                        onViewDetails:
+                                            _showInventoryItemDetails,
                                         onEdit: _openInventoryItemForm,
                                         onDelete: _deleteInventoryItem,
                                       )
@@ -1904,7 +2039,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                                         item: item,
                                                       ),
                                                   onDelete: () =>
-                                                      _deleteInventoryItem(item),
+                                                      _deleteInventoryItem(
+                                                        item,
+                                                      ),
                                                 ),
                                               ),
                                             )
@@ -1961,8 +2098,9 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     final activeEmployees = _employees.where((item) => item.isActive).length;
     final inactiveEmployees = totalEmployees - activeEmployees;
     final totalInventoryItems = _inventoryItems.length;
-    final activeInventoryItems =
-        _inventoryItems.where((item) => item.isActive).length;
+    final activeInventoryItems = _inventoryItems
+        .where((item) => item.isActive)
+        .length;
     final inactiveInventoryItems = totalInventoryItems - activeInventoryItems;
     final dashboardTotalEmployees =
         _dashboardStats?.totalEmployees ?? totalEmployees;
@@ -2056,7 +2194,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     colorScheme: colorScheme,
                                     totalEmployees: dashboardTotalEmployees,
                                     activeEmployees: dashboardActiveEmployees,
-                                    inactiveEmployees: dashboardInactiveEmployees,
+                                    inactiveEmployees:
+                                        dashboardInactiveEmployees,
                                   )
                                 : _selectedSection == _HomeSection.employees
                                 ? _buildEmployeesSection(
@@ -2085,9 +2224,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     endItem: endItem,
                                   )
                                 : _selectedSection == _HomeSection.chat
-                                ? _buildChatSection(
-                                    colorScheme: colorScheme,
-                                  )
+                                ? _buildChatSection(colorScheme: colorScheme)
                                 : _buildUsersSection(
                                     colorScheme: colorScheme,
                                     employeeUsers: employeeUsers,
@@ -2128,9 +2265,7 @@ class _HomeSidebar extends StatelessWidget {
       width: 260,
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border(
-          right: BorderSide(color: colorScheme.outlineVariant),
-        ),
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: SafeArea(
         child: Padding(
@@ -2267,6 +2402,147 @@ class _SidebarItem extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EmptyChatState extends StatelessWidget {
+  const _EmptyChatState({required this.displayName});
+
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.forum_outlined, size: 46, color: colorScheme.primary),
+            const SizedBox(height: 14),
+            Text(
+              'Belum ada pesan',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$displayName bisa jadi yang pertama mengirim pesan ke chat global.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatMessageTile extends StatelessWidget {
+  const _ChatMessageTile({required this.message, required this.isOwnMessage});
+
+  final GlobalChatMessage message;
+  final bool isOwnMessage;
+
+  String _formatTime(DateTime value) {
+    final local = value.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: isOwnMessage
+                ? colorScheme.primaryContainer
+                : colorScheme.secondaryContainer,
+            child: Text(
+              message.senderName.isEmpty
+                  ? '?'
+                  : message.senderName[0].toUpperCase(),
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: isOwnMessage
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSecondaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      message.senderName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    if (isOwnMessage)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Anda',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      _formatTime(message.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message.message,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.5,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2655,10 +2931,7 @@ class AppBarQuickActionsButton extends StatelessWidget {
 }
 
 class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({
-    required this.child,
-    required this.label,
-  });
+  const _QuickActionTile({required this.child, required this.label});
 
   final Widget child;
   final String label;
@@ -2741,10 +3014,7 @@ class _RealtimeStatusCard extends StatelessWidget {
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
                 children: [
                   TextSpan(
                     text: '$label: ',
@@ -2808,10 +3078,7 @@ class _RealtimeStatusCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             'Event terakhir: $lastEventAt',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -2834,7 +3101,7 @@ class IncomingRequestsDialog extends StatelessWidget {
   final Future<void> Function(DataAccessRequestNotification request) onApprove;
   final Future<void> Function(DataAccessRequestNotification request) onReject;
   final Future<void> Function(DataAccessRequestNotification request)
-      onRevokeDecision;
+  onRevokeDecision;
 
   String _formatDate(DateTime value) {
     final local = value.toLocal();
@@ -2847,10 +3114,12 @@ class IncomingRequestsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final pendingRequests = requests.where((item) => item.status == 'pending');
-    final approvedRequests = requests
-        .where((item) => item.status == 'approved');
-    final rejectedRequests = requests
-        .where((item) => item.status == 'rejected');
+    final approvedRequests = requests.where(
+      (item) => item.status == 'approved',
+    );
+    final rejectedRequests = requests.where(
+      (item) => item.status == 'rejected',
+    );
 
     return AlertDialog(
       title: const Text('Request Masuk'),
@@ -2886,7 +3155,8 @@ class IncomingRequestsDialog extends StatelessWidget {
                       ),
                     ],
                     if (approvedRequests.isNotEmpty) ...[
-                      if (pendingRequests.isNotEmpty) const SizedBox(height: 10),
+                      if (pendingRequests.isNotEmpty)
+                        const SizedBox(height: 10),
                       const _RequestSectionTitle(
                         title: 'Sudah Diberi Akses',
                         subtitle:
@@ -2903,7 +3173,8 @@ class IncomingRequestsDialog extends StatelessWidget {
                       ),
                     ],
                     if (rejectedRequests.isNotEmpty) ...[
-                      if (pendingRequests.isNotEmpty || approvedRequests.isNotEmpty)
+                      if (pendingRequests.isNotEmpty ||
+                          approvedRequests.isNotEmpty)
                         const SizedBox(height: 10),
                       const _RequestSectionTitle(
                         title: 'Request Ditolak',
@@ -2935,10 +3206,7 @@ class IncomingRequestsDialog extends StatelessWidget {
 }
 
 class _RequestSectionTitle extends StatelessWidget {
-  const _RequestSectionTitle({
-    required this.title,
-    required this.subtitle,
-  });
+  const _RequestSectionTitle({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -2961,10 +3229,7 @@ class _RequestSectionTitle extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: TextStyle(
-            fontSize: 13,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -4978,17 +5243,14 @@ class _EmployeeFormDialogState extends State<EmployeeFormDialog> {
 }
 
 class InventoryItemFormDialog extends StatefulWidget {
-  const InventoryItemFormDialog({
-    super.key,
-    this.item,
-    required this.userId,
-  });
+  const InventoryItemFormDialog({super.key, this.item, required this.userId});
 
   final InventoryItem? item;
   final String userId;
 
   @override
-  State<InventoryItemFormDialog> createState() => _InventoryItemFormDialogState();
+  State<InventoryItemFormDialog> createState() =>
+      _InventoryItemFormDialogState();
 }
 
 class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
@@ -5435,8 +5697,7 @@ class _InventoryItemFormDialogState extends State<InventoryItemFormDialog> {
         controller: controller,
         keyboardType: keyboardType,
         maxLines: maxLines,
-        validator:
-            validator ?? (value) => _validateRequired(value, label),
+        validator: validator ?? (value) => _validateRequired(value, label),
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
