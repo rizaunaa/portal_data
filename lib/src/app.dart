@@ -237,6 +237,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _itemSearchController = TextEditingController();
   final TextEditingController _chatMessageController = TextEditingController();
+  final ScrollController _chatScrollController = ScrollController();
   final List<Employee> _employees = [];
   final List<InventoryItem> _inventoryItems = [];
   final List<GlobalChatMessage> _chatMessages = [];
@@ -246,6 +247,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   bool _isSaving = false;
   bool _isRefreshingData = false;
   bool _isSendingChatMessage = false;
+  int _unreadChatMessageCount = 0;
   String _searchQuery = '';
   String _itemSearchQuery = '';
   String? _errorMessage;
@@ -297,6 +299,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _currentPage = 0;
       });
     });
+    _chatScrollController.addListener(_handleChatScroll);
     _loadEmployees();
   }
 
@@ -307,6 +310,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     _searchController.dispose();
     _itemSearchController.dispose();
     _chatMessageController.dispose();
+    _chatScrollController.removeListener(_handleChatScroll);
+    _chatScrollController.dispose();
     super.dispose();
   }
 
@@ -378,6 +383,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
         _incomingRequests = incomingRequests ?? const [];
         _syncCurrentPage(filteredCount: _activeFilteredCount);
       });
+      _scrollChatToBottom(immediate: true);
       _setupRealtimeSubscriptionsIfNeeded();
     } on AuthException catch (error) {
       if (mounted) {
@@ -781,6 +787,68 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     setState(() {
       _selectedSection = section;
       _currentPage = 0;
+    });
+    if (section == _HomeSection.chat) {
+      if (_unreadChatMessageCount > 0) {
+        setState(() {
+          _unreadChatMessageCount = 0;
+        });
+      }
+      _scrollChatToBottom(immediate: true);
+    }
+  }
+
+  void _handleChatScroll() {
+    if (_unreadChatMessageCount == 0 || !_isChatNearBottom()) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _unreadChatMessageCount = 0;
+    });
+  }
+
+  bool _isChatNearBottom() {
+    if (!_chatScrollController.hasClients) {
+      return true;
+    }
+
+    final position = _chatScrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= 120;
+  }
+
+  void _scrollChatToBottom({bool immediate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_chatScrollController.hasClients) {
+        return;
+      }
+
+      final target = _chatScrollController.position.maxScrollExtent;
+      if (immediate) {
+        _chatScrollController.jumpTo(target);
+        return;
+      }
+
+      _chatScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+
+      Future.delayed(const Duration(milliseconds: 260), () {
+        if (!mounted || !_chatScrollController.hasClients) {
+          return;
+        }
+
+        final settleTarget = _chatScrollController.position.maxScrollExtent;
+        if ((_chatScrollController.position.pixels - settleTarget).abs() > 2) {
+          _chatScrollController.jumpTo(settleTarget);
+        }
+      });
     });
   }
 
@@ -1264,16 +1332,41 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
 
   Future<void> _refreshChatMessages() async {
     try {
+      final shouldAutoScroll = _isChatNearBottom();
+      final currentUserId = _repository.currentUser?.id ?? '';
+      final previousMessageIds = _chatMessages
+          .map((message) => message.id)
+          .toSet();
       final messages = await _repository.fetchGlobalChatMessages();
       if (!mounted) {
         return;
       }
 
+      final incomingMessages = messages
+          .where((message) => !previousMessageIds.contains(message.id))
+          .toList();
+      final incomingFromCurrentUser = incomingMessages.where(
+        (message) => message.senderUserId == currentUserId,
+      );
+      final incomingFromOtherUsers = incomingMessages.where(
+        (message) => message.senderUserId != currentUserId,
+      );
+
       setState(() {
         _chatMessages
           ..clear()
           ..addAll(messages);
+        if (incomingFromCurrentUser.isNotEmpty || shouldAutoScroll) {
+          _unreadChatMessageCount = 0;
+        } else if (_selectedSection == _HomeSection.chat &&
+            incomingFromOtherUsers.isNotEmpty) {
+          _unreadChatMessageCount += incomingFromOtherUsers.length;
+        }
       });
+
+      if (incomingFromCurrentUser.isNotEmpty || shouldAutoScroll) {
+        _scrollChatToBottom();
+      }
     } catch (_) {
       // Keep the latest messages if chat refresh fails temporarily.
     }
@@ -1309,6 +1402,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       );
       _chatMessageController.clear();
       await _refreshChatMessages();
+      _scrollChatToBottom();
     } on PostgrestException catch (error) {
       _showMessage(error.message, isError: true);
     } on AuthException catch (error) {
@@ -1805,6 +1899,26 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                         ],
                       ),
                     ),
+                    if (_unreadChatMessageCount > 0) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.tonalIcon(
+                          onPressed: () {
+                            setState(() {
+                              _unreadChatMessageCount = 0;
+                            });
+                            _scrollChatToBottom();
+                          },
+                          icon: const Icon(Icons.mark_chat_unread_outlined),
+                          label: Text(
+                            _unreadChatMessageCount == 1
+                                ? 'Pesan baru 1'
+                                : 'Pesan baru $_unreadChatMessageCount',
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Expanded(
                       child: Container(
@@ -1819,6 +1933,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                 displayName: _currentChatDisplayName,
                               )
                             : ListView.separated(
+                                controller: _chatScrollController,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 8,
                                 ),
