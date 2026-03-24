@@ -1796,10 +1796,13 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       if (profile.username.trim().isNotEmpty) {
         return '@${profile.username.trim()}';
       }
+      if (profile.email.trim().isNotEmpty) {
+        return profile.email.trim();
+      }
     }
 
-    final userId = _repository.currentUser?.id ?? '';
-    return userId.isEmpty ? 'user-unknown' : userId;
+    final email = _repository.currentUser?.email?.trim() ?? '';
+    return email.isEmpty ? 'Pengguna' : email;
   }
 
   Future<void> _sendGlobalChatMessage() async {
