@@ -124,13 +124,36 @@ class EmployeeRepository {
   static const int _thumbnailQuality = 72;
 
   User? get currentUser => supabaseClient.auth.currentUser;
+  Stream<AuthState> get authStateChanges =>
+      supabaseClient.auth.onAuthStateChange;
 
   Future<void> ensureSignedIn() async {
     if (currentUser != null) {
       return;
     }
 
-    await supabaseClient.auth.signInAnonymously();
+    throw const AuthException('Silakan login dengan email dan password.');
+  }
+
+  Future<AuthResponse> signInWithEmail({
+    required String email,
+    required String password,
+  }) {
+    return supabaseClient.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+  }
+
+  Future<AuthResponse> signUpWithEmail({
+    required String email,
+    required String password,
+  }) {
+    return supabaseClient.auth.signUp(email: email, password: password);
+  }
+
+  Future<void> signOut() {
+    return supabaseClient.auth.signOut();
   }
 
   Future<List<Employee>> fetchEmployees() async {

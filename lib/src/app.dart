@@ -109,11 +109,260 @@ class EmployeeApp extends StatelessWidget {
           darkTheme: darkTheme,
           home: AutoUpdateGate(
             child: isSupabaseConfigured
-                ? const EmployeeHomePage()
+                ? const AuthGate()
                 : const SupabaseSetupPage(),
           ),
         );
       },
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const repository = EmployeeRepository();
+
+    return StreamBuilder<AuthState>(
+      stream: repository.authStateChanges,
+      builder: (context, snapshot) {
+        if (repository.currentUser != null) {
+          return const EmployeeHomePage();
+        }
+        return const AuthPage();
+      },
+    );
+  }
+}
+
+class AuthPage extends StatefulWidget {
+  const AuthPage({super.key});
+
+  @override
+  State<AuthPage> createState() => _AuthPageState();
+}
+
+class _AuthPageState extends State<AuthPage> {
+  final EmployeeRepository _repository = const EmployeeRepository();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isRegisterMode = false;
+  bool _isSubmitting = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    try {
+      if (_isRegisterMode) {
+        await _repository.signUpWithEmail(email: email, password: password);
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Akun berhasil dibuat. Jika diminta, cek email untuk verifikasi lalu login.',
+            ),
+          ),
+        );
+        setState(() {
+          _isRegisterMode = false;
+        });
+      } else {
+        await _repository.signInWithEmail(email: email, password: password);
+      }
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'), backgroundColor: Colors.red.shade700),
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+    });
+  }
+
+  String? _validateEmail(String? value) {
+    final email = value?.trim() ?? '';
+    if (email.isEmpty) {
+      return 'Email wajib diisi';
+    }
+    if (!email.contains('@') || !email.contains('.')) {
+      return 'Format email belum valid';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final password = value ?? '';
+    if (password.isEmpty) {
+      return 'Password wajib diisi';
+    }
+    if (password.length < 6) {
+      return 'Password minimal 6 karakter';
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Icon(
+                          Icons.lock_person_outlined,
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _isRegisterMode ? 'Buat Akun' : 'Masuk ke Portal',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isRegisterMode
+                            ? 'Daftar dengan email dan password untuk memakai portal.'
+                            : 'Login dengan email dan password untuk membuka data dan chat.',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 24),
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: _validateEmail,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.alternate_email),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        validator: _validatePassword,
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _isSubmitting ? null : _submit,
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(_isRegisterMode ? 'Daftar' : 'Masuk'),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _isRegisterMode = !_isRegisterMode;
+                                  });
+                                },
+                          child: Text(
+                            _isRegisterMode
+                                ? 'Sudah punya akun? Masuk'
+                                : 'Belum punya akun? Daftar',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -186,7 +435,7 @@ class SupabaseSetupPage extends StatelessWidget {
                     _CommandBlock(command: 'SUPABASE_ANON_KEY=YOUR_ANON_KEY'),
                     SizedBox(height: 20),
                     Text(
-                      'Setelah file .env terisi, aplikasi akan login anonim ke Supabase lalu semua operasi CRUD memakai tabel employees.',
+                      'Setelah file .env terisi, aplikasi akan tersambung ke Supabase dan user bisa login dengan email serta password.',
                     ),
                   ],
                 ),
@@ -1330,6 +1579,16 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
     );
   }
 
+  Future<void> _signOut() async {
+    try {
+      await _repository.signOut();
+    } on AuthException catch (error) {
+      _showMessage(error.message, isError: true);
+    } catch (error) {
+      _showMessage('$error', isError: true);
+    }
+  }
+
   Future<void> _refreshChatMessages() async {
     try {
       final shouldAutoScroll = _isChatNearBottom();
@@ -1373,16 +1632,8 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
   }
 
   String get _currentChatDisplayName {
-    for (final employee in _employees) {
-      final name = employee.name.trim();
-      if (name.isNotEmpty) {
-        return name;
-      }
-    }
-
     final userId = _repository.currentUser?.id ?? '';
-    final shortUserId = userId.length <= 8 ? userId : userId.substring(0, 8);
-    return shortUserId.isEmpty ? 'User Portal' : 'User $shortUserId';
+    return userId.isEmpty ? 'user-unknown' : userId;
   }
 
   Future<void> _sendGlobalChatMessage() async {
@@ -2252,6 +2503,11 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
       appBar: AppBar(
         title: Text(_pageTitle),
         actions: [
+          IconButton(
+            tooltip: 'Logout',
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout_outlined),
+          ),
           AppBarQuickActionsButton(
             pendingCount: _incomingRequests
                 .where((item) => item.status == 'pending')
