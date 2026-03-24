@@ -2341,15 +2341,7 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                         color: colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Semua user bisa mengirim pesan ke ruang chat bersama ini secara real-time.',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
@@ -2746,13 +2738,6 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                         color: colorScheme.onSurface,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Kelola inventaris barang kantor pada satu tempat.',
-                                      style: TextStyle(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
                                   ],
                                 ),
                                 const Spacer(),
@@ -2793,13 +2778,6 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                                     fontSize: 22,
                                     fontWeight: FontWeight.w700,
                                     color: colorScheme.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Kelola inventaris barang kantor pada satu tempat.',
-                                  style: TextStyle(
-                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                                 const SizedBox(height: 12),
