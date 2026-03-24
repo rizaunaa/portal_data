@@ -1805,32 +1805,35 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Container(
-                    constraints: const BoxConstraints(minHeight: 320),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: colorScheme.outlineVariant),
+                  SizedBox(
+                    height: 520,
+                    width: double.infinity,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: colorScheme.outlineVariant),
+                      ),
+                      child: _chatMessages.isEmpty
+                          ? _EmptyChatState(
+                              displayName: _currentChatDisplayName,
+                            )
+                          : ListView.separated(
+                              itemCount: _chatMessages.length,
+                              separatorBuilder: (context, index) =>
+                                  Divider(color: colorScheme.outlineVariant),
+                              itemBuilder: (context, index) {
+                                final message = _chatMessages[index];
+                                final isOwnMessage =
+                                    message.senderUserId ==
+                                    (_repository.currentUser?.id ?? '');
+                                return _ChatMessageTile(
+                                  message: message,
+                                  isOwnMessage: isOwnMessage,
+                                );
+                              },
+                            ),
                     ),
-                    child: _chatMessages.isEmpty
-                        ? _EmptyChatState(displayName: _currentChatDisplayName)
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _chatMessages.length,
-                            separatorBuilder: (context, index) =>
-                                Divider(color: colorScheme.outlineVariant),
-                            itemBuilder: (context, index) {
-                              final message = _chatMessages[index];
-                              final isOwnMessage =
-                                  message.senderUserId ==
-                                  (_repository.currentUser?.id ?? '');
-                              return _ChatMessageTile(
-                                message: message,
-                                isOwnMessage: isOwnMessage,
-                              );
-                            },
-                          ),
                   ),
                   const SizedBox(height: 20),
                   Row(
